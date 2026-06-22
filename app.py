@@ -3,18 +3,27 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
-from io import BytesIO
+import json
+import logging
+import os
 from pathlib import Path
 
 import streamlit as st
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
-from src.inference import CaptchaRecognizer, Prediction
+from src.inference import CaptchaRecognizer, CheckpointValidationError, Prediction
+from src.validation import UploadLimits, UploadValidationError, load_uploaded_image
 
 
 ROOT = Path(__file__).resolve().parent
-CHECKPOINT = ROOT / "models" / "captcha_crnn.pt"
+CHECKPOINT = Path(
+    os.getenv("CIPHERLENS_CHECKPOINT", str(ROOT / "models" / "captcha_crnn.pt"))
+)
 LOGO = ROOT / "assets" / "cipherlens-mark.png"
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+UPLOAD_LIMITS = UploadLimits(max_bytes=MAX_UPLOAD_BYTES, max_pixels=4_000_000)
+CONFIDENCE_THRESHOLD = float(os.getenv("CIPHERLENS_CONFIDENCE_THRESHOLD", "0.75"))
+LOGGER = logging.getLogger("cipherlens")
 
 
 st.set_page_config(
@@ -31,19 +40,22 @@ def image_data_uri(path: Path) -> str:
 
 
 @st.cache_resource(show_spinner=False)
-def load_recognizer(checkpoint_path: str) -> CaptchaRecognizer:
+def load_recognizer(
+    checkpoint_path: str, checkpoint_modified_ns: int, checkpoint_size: int
+) -> CaptchaRecognizer:
+    del checkpoint_modified_ns, checkpoint_size
     return CaptchaRecognizer(checkpoint_path)
 
 
 def render_copy_button(text: str) -> None:
-    safe_text = html.escape(text, quote=True)
+    javascript_text = json.dumps(text)
     st.iframe(
         f"""
         <button id="copyButton" aria-label="Copy recognized CAPTCHA text">Copy text</button>
         <script>
           const button = document.getElementById('copyButton');
           button.addEventListener('click', async () => {{
-            const value = {safe_text!r};
+            const value = {javascript_text};
             try {{
               await navigator.clipboard.writeText(value);
               button.textContent = 'Copied';
@@ -145,6 +157,9 @@ st.markdown(
         padding: 12px 14px; border: 1px solid #cde7df; border-radius: 10px;
         background: #f6fffb; color: var(--success); text-align: center; font-weight: 750;
       }
+      .confidence-warning {
+        margin-top: 10px; color: #9a3412; font-size: 13px; font-weight: 650;
+      }
       .result-empty {
         min-height: 270px; display: grid; place-items: center; padding: 28px;
         border: 1px dashed #cbd5e1; border-radius: 14px; color: var(--muted); text-align: center;
@@ -202,10 +217,10 @@ with left:
             st.session_state.file_hash = current_hash
             st.session_state.prediction = None
         try:
-            uploaded_image = Image.open(BytesIO(raw_bytes)).convert("RGB")
+            uploaded_image = load_uploaded_image(raw_bytes, UPLOAD_LIMITS)
             st.image(uploaded_image, width="stretch")
-        except (UnidentifiedImageError, OSError):
-            st.error("This file could not be read as an image. Please upload a valid PNG or JPEG.")
+        except UploadValidationError as error:
+            st.error(str(error))
 
     model_ready = CHECKPOINT.is_file()
     if not model_ready:
@@ -219,11 +234,19 @@ with left:
     if recognize and uploaded_image is not None:
         try:
             with st.spinner("Analyzing image…"):
-                recognizer = load_recognizer(str(CHECKPOINT))
+                checkpoint_stat = CHECKPOINT.stat()
+                recognizer = load_recognizer(
+                    str(CHECKPOINT), checkpoint_stat.st_mtime_ns, checkpoint_stat.st_size
+                )
                 st.session_state.prediction = recognizer.predict(uploaded_image)
-        except Exception as error:
+        except CheckpointValidationError:
             st.session_state.prediction = None
-            st.error(f"Recognition failed: {error}")
+            LOGGER.exception("Checkpoint validation failed")
+            st.error("The recognition model is unavailable. Contact the application operator.")
+        except Exception:
+            st.session_state.prediction = None
+            LOGGER.exception("Unexpected recognition failure")
+            st.error("Recognition failed unexpectedly. Check the server logs and try again.")
 
 with right:
     with st.container(key="result_panel", border=True):
@@ -244,6 +267,11 @@ with right:
                 f'<div class="confidence-value">{prediction.confidence:.1%}</div></div>',
                 unsafe_allow_html=True,
             )
+            if prediction.confidence < CONFIDENCE_THRESHOLD:
+                st.markdown(
+                    '<div class="confidence-warning">Low-confidence result — verify manually.</div>',
+                    unsafe_allow_html=True,
+                )
             render_copy_button(prediction.text)
             if st.button("Try another image", width="stretch"):
                 st.session_state.uploader_version += 1

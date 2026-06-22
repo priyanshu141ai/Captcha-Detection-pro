@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 from collections import Counter
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
@@ -102,18 +103,23 @@ class CaptchaDataset(Dataset[tuple[Tensor, Tensor, str]]):
         codec: CaptchaCodec,
         config: ModelConfig,
         augment: bool,
+        cache_images: bool = True,
     ) -> None:
         self.samples = samples
         self.codec = codec
         self.config = config
         self.augment = augment
+        self.image_bytes = (
+            [sample.path.read_bytes() for sample in samples] if cache_images else None
+        )
 
     def __len__(self) -> int:
         return len(self.samples)
 
     def __getitem__(self, index: int) -> tuple[Tensor, Tensor, str]:
         sample = self.samples[index]
-        with Image.open(sample.path) as image:
+        source = BytesIO(self.image_bytes[index]) if self.image_bytes is not None else sample.path
+        with Image.open(source) as image:
             tensor = prepare_image(image, self.config, augment=self.augment)
         return tensor, self.codec.encode(sample.label), sample.label
 

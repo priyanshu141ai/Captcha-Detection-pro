@@ -9,4 +9,14 @@ font = "sans serif"
 [server]
 maxUploadSize = 10
 headless = true
+fileWatcherType = "none"
+runOnSave = false
+enableCORS = true
+enableXsrfProtection = true
 
+[browser]
+gatherUsageStats = false
+
+[client]
+showErrorDetails = "none"
+toolbarMode = "minimal"

@@ -28,6 +28,12 @@ class CipherLensCoreTests(unittest.TestCase):
         self.assertEqual({len(sample.label) for sample in self.samples}, {6})
         self.assertTrue(set(self.charset) <= set("".join(sample.label for sample in training)))
 
+    def test_second_batch_contract(self) -> None:
+        samples = load_samples(ROOT / "requirements2.txt", ROOT / "data" / "batch_1")
+        self.assertEqual(len(samples), 500)
+        self.assertEqual({len(sample.label) for sample in samples}, {6})
+        self.assertFalse({sample.path for sample in self.samples} & {sample.path for sample in samples})
+
     def test_model_output_has_six_character_positions(self) -> None:
         config = ModelConfig()
         codec = CaptchaCodec(self.charset)
@@ -57,6 +63,12 @@ class CipherLensCoreTests(unittest.TestCase):
             prediction = recognizer.predict(image)
         self.assertEqual(prediction.text, self.samples[0].label)
         self.assertGreater(prediction.confidence, 0.8)
+
+        second_batch = load_samples(ROOT / "requirements2.txt", ROOT / "data" / "batch_1")
+        with Image.open(second_batch[0].path) as image:
+            prediction = recognizer.predict(image)
+        self.assertEqual(prediction.text, second_batch[0].label)
+        self.assertGreater(prediction.confidence, 0.7)
 
 
 if __name__ == "__main__":

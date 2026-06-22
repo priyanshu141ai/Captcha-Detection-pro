@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import time
 from dataclasses import asdict
@@ -28,7 +29,21 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the CipherLens CRNN CAPTCHA recognizer.")
     parser.add_argument("--labels", type=Path, default=Path("labels.txt"))
     parser.add_argument("--images", type=Path, default=Path("data/batch_0"))
+    parser.add_argument(
+        "--extra-dataset",
+        nargs=2,
+        action="append",
+        type=Path,
+        default=[],
+        metavar=("LABELS", "IMAGES"),
+        help="Additional label file and image directory. May be supplied multiple times.",
+    )
     parser.add_argument("--output", type=Path, default=Path("models/captcha_crnn.pt"))
+    parser.add_argument(
+        "--init-checkpoint",
+        type=Path,
+        help="Warm-start from a checkpoint, preserving weights for shared characters.",
+    )
     parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
@@ -36,6 +51,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--patience", type=int, default=15)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="DataLoader worker processes. Keep at 0 on Windows unless benchmarked.",
+    )
+    parser.add_argument(
+        "--torch-threads",
+        type=int,
+        default=min(4, os.cpu_count() or 1),
+        help="Maximum CPU threads used by PyTorch.",
+    )
+    parser.add_argument(
+        "--no-cache-images",
+        action="store_true",
+        help="Read images from disk every epoch instead of caching compressed bytes in memory.",
+    )
+    parser.add_argument(
+        "--history-output",
+        type=Path,
+        default=Path("training_history.json"),
+        help="JSON training-history output path.",
+    )
     return parser.parse_args()
 
 
@@ -53,6 +91,39 @@ def choose_device(requested: str) -> torch.device:
     if requested == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA was requested but is not available.")
     return torch.device(requested)
+
+
+def warm_start_model(
+    model: CaptchaCRNN,
+    codec: CaptchaCodec,
+    checkpoint_path: Path,
+) -> int:
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    checkpoint_config = ModelConfig(**checkpoint.get("model_config", {}))
+    if checkpoint_config != model.config:
+        raise ValueError(
+            "The initialization checkpoint model configuration does not match the current model."
+        )
+
+    checkpoint_codec = CaptchaCodec(checkpoint["charset"])
+    checkpoint_state = checkpoint["model_state"]
+    model_state = model.state_dict()
+
+    for name, tensor in checkpoint_state.items():
+        if name.startswith("classifier."):
+            continue
+        if name in model_state and model_state[name].shape == tensor.shape:
+            model_state[name] = tensor
+
+    shared_characters = sorted(set(codec.charset) & set(checkpoint_codec.charset))
+    for character in shared_characters:
+        old_index = checkpoint_codec.char_to_index[character]
+        new_index = codec.char_to_index[character]
+        model_state["classifier.weight"][new_index] = checkpoint_state["classifier.weight"][old_index]
+        model_state["classifier.bias"][new_index] = checkpoint_state["classifier.bias"][old_index]
+
+    model.load_state_dict(model_state)
+    return len(shared_characters)
 
 
 def evaluate(
@@ -93,35 +164,71 @@ def evaluate(
 
 def main() -> None:
     args = parse_args()
-    if args.epochs < 1 or args.batch_size < 1:
-        raise ValueError("epochs and batch-size must be positive.")
+    if args.epochs < 1 or args.batch_size < 1 or args.patience < 1:
+        raise ValueError("epochs, batch-size, and patience must be positive.")
+    if args.learning_rate <= 0:
+        raise ValueError("learning-rate must be positive.")
+    if not 0.0 < args.validation_fraction < 1.0:
+        raise ValueError("validation-fraction must be between 0 and 1.")
+    if args.num_workers < 0 or args.torch_threads < 1:
+        raise ValueError("num-workers cannot be negative and torch-threads must be positive.")
 
     seed_everything(args.seed)
+    torch.set_num_threads(args.torch_threads)
     device = choose_device(args.device)
     config = ModelConfig()
-    samples = load_samples(args.labels, args.images)
+    dataset_sources = [(args.labels, args.images), *args.extra_dataset]
+    samples = [
+        sample
+        for labels_path, images_dir in dataset_sources
+        for sample in load_samples(labels_path, images_dir)
+    ]
+    sample_paths = [sample.path.resolve() for sample in samples]
+    if len(sample_paths) != len(set(sample_paths)):
+        raise ValueError("The configured datasets contain duplicate image paths.")
     charset = observed_charset(samples)
     codec = CaptchaCodec(charset)
     training_samples, validation_samples = coverage_aware_split(
         samples, args.validation_fraction, args.seed
     )
 
+    loader_options = {
+        "num_workers": args.num_workers,
+        "collate_fn": collate_captchas,
+        "pin_memory": device.type == "cuda",
+        "persistent_workers": args.num_workers > 0,
+    }
     training_loader = DataLoader(
-        CaptchaDataset(training_samples, codec, config, augment=True),
+        CaptchaDataset(
+            training_samples,
+            codec,
+            config,
+            augment=True,
+            cache_images=not args.no_cache_images,
+        ),
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=0,
-        collate_fn=collate_captchas,
+        **loader_options,
     )
     validation_loader = DataLoader(
-        CaptchaDataset(validation_samples, codec, config, augment=False),
+        CaptchaDataset(
+            validation_samples,
+            codec,
+            config,
+            augment=False,
+            cache_images=not args.no_cache_images,
+        ),
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=0,
-        collate_fn=collate_captchas,
+        **loader_options,
     )
 
     model = CaptchaCRNN(codec.num_classes, config).to(device)
+    if args.init_checkpoint is not None:
+        shared_count = warm_start_model(model, codec, args.init_checkpoint)
+        print(
+            f"initialized_from={args.init_checkpoint} shared_character_weights={shared_count}"
+        )
     character_counts = torch.zeros(codec.num_classes, dtype=torch.float32)
     for sample in training_samples:
         for character in sample.label:
@@ -134,12 +241,13 @@ def main() -> None:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     history: list[dict[str, float | int]] = []
-    best_character_accuracy = -1.0
+    best_score = (-1.0, -1.0, float("-inf"))
     stale_epochs = 0
     started = time.perf_counter()
 
     print(
-        f"device={device} samples={len(samples)} train={len(training_samples)} "
+        f"device={device} datasets={len(dataset_sources)} samples={len(samples)} "
+        f"train={len(training_samples)} "
         f"validation={len(validation_samples)} charset={charset!r}"
     )
 
@@ -173,29 +281,50 @@ def main() -> None:
             f"exact_acc={metrics['exact_accuracy']:.3f}"
         )
 
-        if metrics["character_accuracy"] > best_character_accuracy:
-            best_character_accuracy = metrics["character_accuracy"]
+        score = (
+            metrics["character_accuracy"],
+            metrics["exact_accuracy"],
+            -metrics["loss"],
+        )
+        if score > best_score:
+            best_score = score
             stale_epochs = 0
+            checkpoint = {
+                "checkpoint_version": 1,
+                "model_state": model.state_dict(),
+                "charset": charset,
+                "model_config": asdict(config),
+                "metrics": metrics,
+                "epoch": epoch,
+                "training": {
+                    "seed": args.seed,
+                    "train_samples": len(training_samples),
+                    "validation_samples": len(validation_samples),
+                    "dataset_sources": [
+                        {"labels": str(labels), "images": str(images)}
+                        for labels, images in dataset_sources
+                    ],
+                },
+            }
+            temporary_output = args.output.with_suffix(f"{args.output.suffix}.tmp")
             torch.save(
                 {
-                    "model_state": model.state_dict(),
-                    "charset": charset,
-                    "model_config": asdict(config),
-                    "metrics": metrics,
-                    "epoch": epoch,
+                    **checkpoint,
                 },
-                args.output,
+                temporary_output,
             )
+            temporary_output.replace(args.output)
         else:
             stale_epochs += 1
             if stale_epochs >= args.patience:
                 print(f"Early stopping after {epoch} epochs.")
                 break
 
-    Path("training_history.json").write_text(json.dumps(history, indent=2), encoding="utf-8")
+    args.history_output.parent.mkdir(parents=True, exist_ok=True)
+    args.history_output.write_text(json.dumps(history, indent=2), encoding="utf-8")
     elapsed = time.perf_counter() - started
     print(
-        f"saved={args.output} best_character_accuracy={best_character_accuracy:.3f} "
+        f"saved={args.output} best_character_accuracy={best_score[0]:.3f} "
         f"elapsed_seconds={elapsed:.1f}"
     )
 

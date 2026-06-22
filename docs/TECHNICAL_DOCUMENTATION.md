@@ -10,7 +10,7 @@ CipherLens is a local CAPTCHA recognition system for fixed-length, six-character
 - a Streamlit upload and recognition interface;
 - automated regression tests.
 
-The current dataset contains 500 labeled PNG images. Each source image is 151 by 41 pixels, and each label contains exactly six characters. The trained model recognizes the 40 characters observed in this dataset.
+The current dataset contains 1,000 labeled PNG images across two batches. Each source image is 151 by 41 pixels, and each label contains exactly six characters. The trained model recognizes the 43 characters observed across both batches.
 
 ## 2. Repository structure
 
@@ -21,7 +21,8 @@ Captcha-Detection/
 |-- assets/
 |   `-- cipherlens-mark.png      # Application logo
 |-- data/
-|   `-- batch_0/                 # 500 CAPTCHA PNG images
+|   |-- batch_0/                 # 500 CAPTCHA PNG images
+|   `-- batch_1/                 # 500 additional CAPTCHA PNG images
 |-- design/
 |   `-- cipherlens-concept.png   # UI design reference
 |-- docs/
@@ -36,6 +37,7 @@ Captcha-Detection/
 |   `-- test_core.py             # Core regression tests
 |-- app.py                       # Streamlit application
 |-- labels.txt                   # Image filename-to-label mapping
+|-- requirements2.txt            # Batch 1 filename-to-label mapping
 |-- requirements.txt             # Runtime Python dependencies
 `-- train.py                     # Training and validation entry point
 ```
@@ -66,22 +68,22 @@ source .venv/bin/activate
 
 ### 4.1 Image directory
 
-Training images are stored in `data/batch_0`. The default training command expects PNG files in this directory.
+Training images are stored in `data/batch_0` and `data/batch_1`. The default training command uses batch 0; pass `--extra-dataset requirements2.txt data/batch_1` to include batch 1.
 
 Current source-image properties:
 
 | Property | Value |
 |---|---:|
-| Image count | 500 |
+| Image count | 1,000 |
 | Width | 151 pixels |
 | Height | 41 pixels |
 | Color input | RGB |
 | Label length | 6 characters |
-| Observed character classes | 40 |
+| Observed character classes | 43 |
 
 ### 4.2 Label file
 
-`labels.txt` uses one whitespace-separated filename and label per line:
+`labels.txt` and `requirements2.txt` use one whitespace-separated filename and label per line:
 
 ```text
 captcha_00000.png TAGbCN
@@ -155,12 +157,14 @@ Validation and inference do not apply augmentation.
 
 `coverage_aware_split()` creates a deterministic training/validation split while keeping at least one occurrence of every observed character in the training subset.
 
-Default behavior:
+Combined-batch checkpoint behavior:
 
 - seed: `42`;
 - validation fraction: `0.2`;
-- training samples: `400`;
-- validation samples: `100`.
+- training samples: `800`;
+- validation samples: `200`.
+
+Training only the default batch 0 dataset produces a 400/100 split.
 
 This protects rare characters from being placed only in validation. It does not solve severe class imbalance; more examples are still required for reliable generalization.
 
@@ -219,7 +223,7 @@ All supplied CAPTCHA labels have exactly six characters. The network therefore p
 
 This design was selected because it:
 
-- is simpler to optimize than CTC on a 500-image dataset;
+- is simpler to optimize than CTC on the 1,000-image dataset;
 - preserves repeated characters such as `AAAAAA` without blank-token logic;
 - uses bidirectional sequence context to resolve noisy or overlapping characters;
 - is substantially smaller than transformer OCR architectures.
@@ -277,7 +281,8 @@ Training performs the following sequence:
 9. Optimizes with AdamW.
 10. Reduces the learning rate when validation loss stalls.
 11. Clips gradients to a maximum norm of `5.0`.
-12. Saves the checkpoint with the best character accuracy.
+12. Atomically saves the checkpoint with the best character accuracy, using
+    exact accuracy and validation loss as tie-breakers.
 13. Stops early when validation character accuracy no longer improves.
 
 ### 8.1 Command-line arguments
@@ -286,7 +291,9 @@ Training performs the following sequence:
 |---|---|---|
 | `--labels` | `labels.txt` | Label mapping file |
 | `--images` | `data/batch_0` | CAPTCHA image directory |
+| `--extra-dataset LABELS IMAGES` | none | Additional label file and image directory; repeatable |
 | `--output` | `models/captcha_crnn.pt` | Checkpoint output path |
+| `--init-checkpoint` | none | Warm-start weights and shared character classifiers |
 | `--epochs` | `60` | Maximum training epochs |
 | `--batch-size` | `32` | Samples per optimizer step |
 | `--learning-rate` | `0.001` | Initial AdamW learning rate |
@@ -294,12 +301,32 @@ Training performs the following sequence:
 | `--patience` | `15` | Early-stopping patience |
 | `--seed` | `42` | Reproducibility seed |
 | `--device` | `auto` | `auto`, `cpu`, or `cuda` |
+| `--num-workers` | `0` | DataLoader worker processes |
+| `--torch-threads` | up to `4` | Maximum CPU threads used by PyTorch |
+| `--no-cache-images` | disabled | Read images from disk on every epoch |
+| `--history-output` | `training_history.json` | JSON metric-history path |
 
 Example custom run:
 
 ```powershell
 python train.py --epochs 80 --batch-size 32 --learning-rate 0.0005 --device cpu
 ```
+
+Train on batch 0 and batch 1 together:
+
+```powershell
+python train.py --extra-dataset requirements2.txt data/batch_1
+```
+
+The default `--labels` and `--images` dataset is always loaded first. Each
+`--extra-dataset` pair is then appended. Duplicate resolved image paths are
+rejected to prevent accidentally training on the same files twice.
+
+When `--init-checkpoint` is provided, convolutional and recurrent weights are
+restored from that checkpoint. Classifier rows are copied by character name,
+so shared characters retain their learned weights while newly observed
+characters start with random classifier weights. Model configurations must
+match.
 
 ### 8.2 Loss and class weighting
 
@@ -331,9 +358,9 @@ The included checkpoint achieved:
 
 | Metric | Result |
 |---|---:|
-| Character accuracy | 98.67% |
+| Character accuracy | 98.58% |
 | Exact-string accuracy | 92% |
-| Selected epoch | 27 |
+| Selected fine-tuning epoch | 9 |
 
 These metrics apply to the deterministic split of the supplied dataset and should not be treated as broad real-world CAPTCHA performance.
 
@@ -351,7 +378,9 @@ The checkpoint at `models/captcha_crnn.pt` is a PyTorch dictionary:
 }
 ```
 
-Do not load an untrusted checkpoint. PyTorch checkpoint files are binary artifacts and should only come from trusted sources.
+Inference and warm-start loading use PyTorch's restricted `weights_only=True`
+mode and validate required checkpoint fields. Checkpoints should still come only
+from trusted build or artifact pipelines.
 
 ## 10. Inference API
 
@@ -399,7 +428,8 @@ Open `http://localhost:8501`.
 ### Application flow
 
 1. The user uploads a PNG, JPG, or JPEG image.
-2. Streamlit validates and previews the image.
+2. The application validates format, byte size, decoded pixel count, and image
+   integrity before previewing it.
 3. The user selects **Recognize text**.
 4. The cached recognizer loads `models/captcha_crnn.pt`.
 5. The model returns text and confidence.
@@ -413,9 +443,13 @@ Open `http://localhost:8501`.
 - indigo primary color;
 - application background and text colors;
 - a 10 MB upload limit;
+- a 4,000,000 decoded-pixel application safety limit;
 - headless server mode.
 
 The uploaded image is processed in memory and is not deliberately persisted by the application.
+
+Production deployment, CI/CD, health checks, security controls, workload
+tuning, and rollback are documented in [OPERATIONS.md](OPERATIONS.md).
 
 ## 12. Automated tests
 
@@ -427,8 +461,8 @@ python -m unittest discover -s tests -v
 
 Current tests verify:
 
-- the 500-image dataset contract;
-- the deterministic 400/100 split;
+- both 500-image batch contracts;
+- the deterministic split and character coverage;
 - training-character coverage;
 - the six-position model output shape;
 - repeated-character decoding;
@@ -477,7 +511,7 @@ Resolution: collect labeled examples from the target style, balance all expected
 - Only characters observed during training can be predicted.
 - Several dataset characters have very few examples.
 - The confidence value is not calibrated.
-- Validation uses only 100 images from the same dataset source.
+- Validation uses only 200 images from the two supplied batches.
 - Accuracy can decrease on unseen fonts, distortion patterns, backgrounds, and noise levels.
 - The current split is suitable for development, not a substitute for an independent test dataset.
 
@@ -494,4 +528,3 @@ Resolution: collect labeled examples from the target style, balance all expected
 ## 16. Responsible use
 
 Use CipherLens only on CAPTCHA images and systems that you own or are explicitly authorized to test. CAPTCHA recognition can affect access-control and abuse-prevention systems, so deployment must follow applicable policies and laws.
-

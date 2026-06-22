@@ -3,5 +3,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .streamlit/secrets.toml
+.env
+.docker-config/
+tmp/
 training_history.json
 batch_0_zip.zip
+batch_1_zip.zip
