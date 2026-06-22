@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import torch
 from torch import Tensor, nn
+from torch.nn import functional as F
 
 
 @dataclass(frozen=True)
@@ -50,7 +51,7 @@ class CaptchaCRNN(nn.Module):
     def forward(self, images: Tensor) -> Tensor:
         features = self.features(images)
         features = features.mean(dim=2)  # [batch, channels, width]
-        features = nn.functional.adaptive_avg_pool1d(features, self.config.sequence_length)
+        features = F.adaptive_avg_pool1d(features, self.config.sequence_length)
         sequence = features.permute(2, 0, 1)  # [time, batch, channels]
         sequence, _ = self.sequence(sequence)
         return self.classifier(sequence)

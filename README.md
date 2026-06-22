@@ -2,6 +2,10 @@
 
 CipherLens is a local Streamlit application that reads six-character CAPTCHA images with a compact CRNN (convolutional recurrent neural network) and six position-wise character classifiers.
 
+## Documentation
+
+See [CipherLens Technical Documentation](docs/TECHNICAL_DOCUMENTATION.md) for the architecture, dataset contract, training pipeline, inference API, tests, checkpoint format, and troubleshooting guide.
+
 ## Why this model
 
 The supplied dataset contains 500 images. Every image is 151×41 pixels and every label has six mixed-case alphanumeric characters. A fixed-length CRNN is the best practical baseline here because it:
@@ -34,7 +38,7 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
-The included archive has already been expanded to `data/batch_0`. If starting from a clean copy, extract `batch_0_zip.zip` there first.
+The repository includes the extracted training images in `data/batch_0`.
 
 ## Train
 
