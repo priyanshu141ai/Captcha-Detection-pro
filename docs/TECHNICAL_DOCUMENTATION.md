@@ -29,10 +29,17 @@ Captcha-Detection/
 |   `-- TECHNICAL_DOCUMENTATION.md
 |-- models/
 |   `-- captcha_crnn.pt          # Trained model checkpoint
+|-- configs/
+|   `-- default.yaml             # Validated application and training defaults
 |-- src/
-|   |-- data.py                  # Dataset loading, splitting, and preprocessing
-|   |-- inference.py             # Checkpoint loading and prediction API
-|   `-- model.py                 # Network, codec, and edit-distance logic
+|   |-- cipherlens/              # Installable application package
+|   |   |-- data/                # Dataset loading, splitting, and preprocessing
+|   |   |-- inference/           # Checkpoint inference and upload validation
+|   |   |-- models/              # Network, codec, and edit-distance logic
+|   |   `-- utils/               # Reproducibility helpers
+|   |-- data.py                  # Legacy compatibility import
+|   |-- inference.py             # Legacy compatibility import
+|   `-- model.py                 # Legacy compatibility import
 |-- tests/
 |   `-- test_core.py             # Core regression tests
 |-- app.py                       # Streamlit application
@@ -55,7 +62,7 @@ Install the exact project dependencies into a virtual environment:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+python -m pip install --editable ".[dev]"
 ```
 
 On macOS or Linux, activate the environment with:
@@ -170,7 +177,8 @@ This protects rare characters from being placed only in validation. It does not 
 
 ## 6. Model architecture
 
-The model is implemented by `CaptchaCRNN` in `src/model.py`.
+The model is implemented by `CaptchaCRNN` in `src/cipherlens/models/__init__.py`.
+`src/model.py` remains as a backward-compatible import surface.
 
 ```mermaid
 flowchart LR
@@ -305,6 +313,10 @@ Training performs the following sequence:
 | `--torch-threads` | up to `4` | Maximum CPU threads used by PyTorch |
 | `--no-cache-images` | disabled | Read images from disk on every epoch |
 | `--history-output` | `training_history.json` | JSON metric-history path |
+| `--config` | `configs/default.yaml` | YAML defaults file |
+| `--deterministic` | disabled | Request deterministic PyTorch algorithms |
+| `--log-level` | `INFO` | Structured logging level |
+| `--log-format` | `console` | `console` or `json` logging |
 
 Example custom run:
 

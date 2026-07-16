@@ -13,13 +13,16 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements.txt ./
+COPY requirements.txt pyproject.toml README.md ./
 RUN python -m pip install --upgrade pip \
     && python -m pip install -r requirements.txt
 
-COPY --chown=appuser:appuser app.py ./
 COPY --chown=appuser:appuser src ./src
+RUN python -m pip install --no-deps .
+
+COPY --chown=appuser:appuser app.py ./
 COPY --chown=appuser:appuser assets ./assets
+COPY --chown=appuser:appuser configs ./configs
 COPY --chown=appuser:appuser models ./models
 COPY --chown=appuser:appuser .streamlit ./.streamlit
 

@@ -14,8 +14,8 @@ images and training tooling are excluded from the image.
 ## Local startup
 
 ```powershell
-cd "C:\Captcha detection"
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+cd "C:\path\to\Captcha-Detection"
+.\.venv\Scripts\python.exe -m pip install --editable ".[dev]"
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
@@ -66,12 +66,19 @@ predictions from both data batches.
 
 | Environment variable | Default | Purpose |
 |---|---:|---|
+| `CIPHERLENS_CONFIG` | `configs/default.yaml` | YAML configuration file |
 | `CIPHERLENS_CHECKPOINT` | `models/captcha_crnn.pt` | Model checkpoint path |
 | `CIPHERLENS_TORCH_THREADS` | `2` | CPU threads per application process |
 | `CIPHERLENS_CONFIDENCE_THRESHOLD` | `0.75` | Threshold for manual-verification warning |
+| `CIPHERLENS_MAX_UPLOAD_BYTES` | `10485760` | Maximum upload size in bytes |
+| `CIPHERLENS_MAX_UPLOAD_PIXELS` | `4000000` | Maximum decoded image pixel count |
+| `CIPHERLENS_LOG_LEVEL` | `INFO` | Application logging level |
+| `CIPHERLENS_LOG_FORMAT` | `console` | `console` or newline-delimited `json` logs |
 
 Copy `.env.example` to `.env` to override Compose defaults. Do not commit `.env`
-files or secrets.
+files or secrets. Configuration is validated at startup; invalid integers,
+thresholds, paths, log levels, and log formats fail with an actionable message.
+Runtime environment variables override `configs/default.yaml`.
 
 ## Workload controls
 
@@ -93,6 +100,9 @@ files or secrets.
 
 ```powershell
 .\.venv\Scripts\python.exe -m compileall -q app.py train.py src tests scripts
+.\.venv\Scripts\python.exe -m ruff format --check .
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m mypy
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe -m scripts.verify_runtime
 ```
@@ -108,11 +118,12 @@ docker build --tag cipherlens:release .
 
 `.github/workflows/ci.yml` runs on pushes to `main` and pull requests. It:
 
-1. installs pinned runtime dependencies;
-2. compiles Python sources;
-3. runs unit and integration tests;
-4. loads the production checkpoint and verifies batch-0 and batch-1 predictions;
-5. builds the production Docker image.
+1. installs the project and development quality tools;
+2. checks formatting, linting, and practical typing;
+3. compiles Python sources;
+4. runs unit and integration tests;
+5. loads the production checkpoint and verifies batch-0 and batch-1 predictions;
+6. builds the production Docker image.
 
 CI uses least-privilege repository permissions, cancels superseded runs, and
 applies job timeouts. Dependabot checks Python, GitHub Actions, and Docker base

@@ -1,6 +1,10 @@
 # CipherLens
 
-CipherLens is a local Streamlit application that reads six-character CAPTCHA images with a compact CRNN (convolutional recurrent neural network) and six position-wise character classifiers.
+CipherLens is a local Streamlit application that reads six-character CAPTCHA images with a compact CRNN (convolutional recurrent neural network) and six position-wise outputs from a shared character classifier.
+
+Use CipherLens only with synthetic images or systems and data you own or are
+explicitly authorized to test. The project does not automate browser interaction,
+CAPTCHA submission, or access-control bypass.
 
 ## Documentation
 
@@ -38,27 +42,61 @@ PowerShell:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install --editable ".[dev]"
 ```
 
-The repository includes extracted training images in `data/batch_0` and `data/batch_1`.
+This installs the `cipherlens` package plus the formatting, linting, typing, and
+coverage tools used by contributors. For a runtime-only local installation, use
+`python -m pip install --editable .` instead. `requirements.txt` remains available
+for container and compatibility installs.
+
+The repository includes extracted training images in `data/batch_0` and
+`data/batch_1`.
+
+## Configuration
+
+Validated defaults live in `configs/default.yaml`. Runtime environment variables
+override the YAML file:
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `CIPHERLENS_CONFIG` | `configs/default.yaml` | Alternate YAML settings file |
+| `CIPHERLENS_CHECKPOINT` | `models/captcha_crnn.pt` | Approved checkpoint path |
+| `CIPHERLENS_TORCH_THREADS` | `2` | Process-wide CPU thread count |
+| `CIPHERLENS_CONFIDENCE_THRESHOLD` | `0.75` | Manual-review warning threshold |
+| `CIPHERLENS_MAX_UPLOAD_BYTES` | `10485760` | Upload byte limit |
+| `CIPHERLENS_MAX_UPLOAD_PIXELS` | `4000000` | Decoded image pixel limit |
+| `CIPHERLENS_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` |
+| `CIPHERLENS_LOG_FORMAT` | `console` | `console` or newline-delimited `json` |
+
+Invalid values fail at startup with a field-specific message. Copy
+`.env.example` to `.env` for local Compose overrides; never commit `.env`.
 
 ## Train
 
+Training must write to a candidate path so the approved checkpoint is not
+overwritten:
+
 ```powershell
-python train.py
+python train.py `
+  --output models/captcha_crnn_candidate.pt `
+  --history-output artifacts/candidate-training-history.json
 ```
 
 Useful overrides:
 
 ```powershell
-python train.py --epochs 80 --batch-size 32 --device cpu
+python train.py --config configs/default.yaml `
+  --epochs 80 --batch-size 32 --device cpu `
+  --output models/captcha_crnn_candidate.pt
 ```
 
 Train on both included batches:
 
 ```powershell
-python train.py --extra-dataset requirements2.txt data/batch_1
+python train.py --extra-dataset requirements2.txt data/batch_1 `
+  --output models/captcha_crnn_candidate.pt
 ```
 
 Warm-start from the existing checkpoint when extending the character set:
@@ -68,7 +106,9 @@ python train.py --extra-dataset requirements2.txt data/batch_1 `
   --init-checkpoint models/captcha_crnn.pt --learning-rate 0.0002
 ```
 
-The best checkpoint is written to `models/captcha_crnn.pt`; epoch metrics are written to `training_history.json`.
+The best checkpoint is written to the explicit candidate path. Review independent
+evaluation evidence before promoting a candidate; do not replace
+`models/captcha_crnn.pt` during routine training.
 
 ## Run the app
 
@@ -93,6 +133,9 @@ deployment.
 ```powershell
 python -m unittest discover -s tests -v
 python -m scripts.verify_runtime
+python -m ruff format --check .
+python -m ruff check .
+python -m mypy
 ```
 
 Use the recognizer only with CAPTCHA images and systems you own or are authorized to test.

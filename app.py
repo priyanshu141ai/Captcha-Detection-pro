@@ -5,26 +5,24 @@ import hashlib
 import html
 import json
 import logging
-import os
 from pathlib import Path
 
 import streamlit as st
 from PIL import Image
 
-from src.inference import CaptchaRecognizer, CheckpointValidationError, Prediction
-from src.validation import UploadLimits, UploadValidationError, load_uploaded_image
-
+from cipherlens.config import ConfigurationError, load_project_settings
+from cipherlens.inference import (
+    CaptchaRecognizer,
+    CheckpointValidationError,
+    Prediction,
+    UploadLimits,
+    UploadValidationError,
+    load_uploaded_image,
+)
+from cipherlens.logging import configure_logging
 
 ROOT = Path(__file__).resolve().parent
-CHECKPOINT = Path(
-    os.getenv("CIPHERLENS_CHECKPOINT", str(ROOT / "models" / "captcha_crnn.pt"))
-)
 LOGO = ROOT / "assets" / "cipherlens-mark.png"
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-UPLOAD_LIMITS = UploadLimits(max_bytes=MAX_UPLOAD_BYTES, max_pixels=4_000_000)
-CONFIDENCE_THRESHOLD = float(os.getenv("CIPHERLENS_CONFIDENCE_THRESHOLD", "0.75"))
-LOGGER = logging.getLogger("cipherlens")
-
 
 st.set_page_config(
     page_title="CipherLens · CAPTCHA recognition",
@@ -32,6 +30,22 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+try:
+    SETTINGS = load_project_settings(ROOT)
+except ConfigurationError as error:
+    logging.basicConfig(level=logging.ERROR)
+    logging.getLogger("cipherlens").error("Invalid application configuration: %s", error)
+    st.error(f"CipherLens configuration is invalid: {error}")
+    st.stop()
+
+LOGGER = configure_logging(SETTINGS.runtime.log_level, SETTINGS.runtime.log_format)
+CHECKPOINT = SETTINGS.runtime.checkpoint_path
+UPLOAD_LIMITS = UploadLimits(
+    max_bytes=SETTINGS.runtime.max_upload_bytes,
+    max_pixels=SETTINGS.runtime.max_upload_pixels,
+)
+CONFIDENCE_THRESHOLD = SETTINGS.runtime.confidence_threshold
 
 
 def image_data_uri(path: Path) -> str:
@@ -41,10 +55,13 @@ def image_data_uri(path: Path) -> str:
 
 @st.cache_resource(show_spinner=False)
 def load_recognizer(
-    checkpoint_path: str, checkpoint_modified_ns: int, checkpoint_size: int
+    checkpoint_path: str,
+    checkpoint_modified_ns: int,
+    checkpoint_size: int,
+    torch_threads: int,
 ) -> CaptchaRecognizer:
     del checkpoint_modified_ns, checkpoint_size
-    return CaptchaRecognizer(checkpoint_path)
+    return CaptchaRecognizer(checkpoint_path, torch_threads=torch_threads)
 
 
 def render_copy_button(text: str) -> None:
@@ -195,7 +212,7 @@ st.markdown(
 )
 st.markdown(
     '<section class="cipher-intro"><h1>Read CAPTCHA text in seconds</h1>'
-    '<p>Upload a CAPTCHA image and the recognition model will return its best prediction.</p></section>',
+    "<p>Upload a CAPTCHA image and the recognition model will return its best prediction.</p></section>",
     unsafe_allow_html=True,
 )
 
@@ -236,7 +253,10 @@ with left:
             with st.spinner("Analyzing image…"):
                 checkpoint_stat = CHECKPOINT.stat()
                 recognizer = load_recognizer(
-                    str(CHECKPOINT), checkpoint_stat.st_mtime_ns, checkpoint_stat.st_size
+                    str(CHECKPOINT),
+                    checkpoint_stat.st_mtime_ns,
+                    checkpoint_stat.st_size,
+                    SETTINGS.runtime.torch_threads,
                 )
                 st.session_state.prediction = recognizer.predict(uploaded_image)
         except CheckpointValidationError:
@@ -248,36 +268,35 @@ with left:
             LOGGER.exception("Unexpected recognition failure")
             st.error("Recognition failed unexpectedly. Check the server logs and try again.")
 
-with right:
-    with st.container(key="result_panel", border=True):
-        st.markdown('<div class="panel-label">Recognition result</div>', unsafe_allow_html=True)
-        prediction: Prediction | None = st.session_state.prediction
-        if prediction is None:
+with right, st.container(key="result_panel", border=True):
+    st.markdown('<div class="panel-label">Recognition result</div>', unsafe_allow_html=True)
+    prediction: Prediction | None = st.session_state.prediction
+    if prediction is None:
+        st.markdown(
+            '<div class="result-empty"><div><strong>Your result will appear here</strong>'
+            "Upload an image and select “Recognize text”.</div></div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        safe_prediction = html.escape(prediction.text or "No text detected")
+        st.markdown(
+            f'<div class="result-display"><div><div class="check">✓</div>'
+            f'<div class="prediction">{safe_prediction}</div></div></div>'
+            f'<div class="confidence-row"><div class="label">Confidence</div>'
+            f'<div class="confidence-value">{prediction.confidence:.1%}</div></div>',
+            unsafe_allow_html=True,
+        )
+        if prediction.confidence < CONFIDENCE_THRESHOLD:
             st.markdown(
-                '<div class="result-empty"><div><strong>Your result will appear here</strong>'
-                'Upload an image and select “Recognize text”.</div></div>',
+                '<div class="confidence-warning">Low-confidence result — verify manually.</div>',
                 unsafe_allow_html=True,
             )
-        else:
-            safe_prediction = html.escape(prediction.text or "No text detected")
-            st.markdown(
-                f'<div class="result-display"><div><div class="check">✓</div>'
-                f'<div class="prediction">{safe_prediction}</div></div></div>'
-                f'<div class="confidence-row"><div class="label">Confidence</div>'
-                f'<div class="confidence-value">{prediction.confidence:.1%}</div></div>',
-                unsafe_allow_html=True,
-            )
-            if prediction.confidence < CONFIDENCE_THRESHOLD:
-                st.markdown(
-                    '<div class="confidence-warning">Low-confidence result — verify manually.</div>',
-                    unsafe_allow_html=True,
-                )
-            render_copy_button(prediction.text)
-            if st.button("Try another image", width="stretch"):
-                st.session_state.uploader_version += 1
-                st.session_state.prediction = None
-                st.session_state.file_hash = None
-                st.rerun()
+        render_copy_button(prediction.text)
+        if st.button("Try another image", width="stretch"):
+            st.session_state.uploader_version += 1
+            st.session_state.prediction = None
+            st.session_state.file_hash = None
+            st.rerun()
 
 st.markdown(
     '<div class="privacy-note">Runs locally · Your image is not stored</div>',

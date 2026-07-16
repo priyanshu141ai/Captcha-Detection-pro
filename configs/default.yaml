@@ -1,0 +1,24 @@
+runtime:
+  checkpoint_path: models/captcha_crnn.pt
+  torch_threads: 2
+  confidence_threshold: 0.75
+  max_upload_bytes: 10485760
+  max_upload_pixels: 4000000
+  log_level: INFO
+  log_format: console
+
+training:
+  labels_path: labels.txt
+  images_path: data/batch_0
+  output_path: models/captcha_crnn.pt
+  history_output_path: training_history.json
+  epochs: 60
+  batch_size: 32
+  learning_rate: 0.001
+  validation_fraction: 0.2
+  patience: 15
+  seed: 42
+  device: auto
+  num_workers: 0
+  cache_images: true
+  deterministic: false

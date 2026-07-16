@@ -23,18 +23,19 @@ Current compatibility entry points:
 
 - `app.py`: Streamlit UI and direct local inference.
 - `train.py`: training CLI.
-- `src/data.py`: label loading, splitting, datasets, and preprocessing.
-- `src/model.py`: CRNN, codec, and edit distance.
-- `src/inference.py`: safe checkpoint loading and prediction.
-- `src/validation.py`: upload validation.
+- `src/cipherlens/`: installable package containing configuration, data, model,
+  inference, logging, and utility modules.
+- `src/data.py`, `src/model.py`, `src/inference.py`, and `src/validation.py`:
+  backward-compatible imports for existing callers.
 - `scripts/verify_runtime.py`: checkpoint smoke verification.
 - `tests/`: current `unittest` suite.
 
-The incremental target is a proper `src/cipherlens/` package with separate
-`data`, `models`, `training`, `evaluation`, `inference`, `api`, `monitoring`, and
-`utils` packages. Keep the Streamlit frontend separate from the FastAPI service,
-and keep training code out of both runtime entry points. Preserve compatibility
-wrappers while callers still use the current `src.*` imports.
+The installable `src/cipherlens/` package currently contains configuration,
+logging, data, models, inference, and utilities. The incremental target adds
+separate `training`, `evaluation`, `api`, and `monitoring` packages. Keep the
+Streamlit frontend separate from the FastAPI service, and keep training code out
+of both runtime entry points. Preserve compatibility wrappers while callers still
+use the current `src.*` imports.
 
 ## Supported Python version
 
@@ -49,13 +50,16 @@ Run commands from the repository root in PowerShell.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install --editable ".[dev]"
 ```
 
 Run verification:
 
 ```powershell
 python -m compileall -q app.py train.py src tests scripts
+python -m ruff format --check .
+python -m ruff check .
+python -m mypy
 python -m unittest discover -s tests -v
 python -m scripts.verify_runtime
 docker compose config
@@ -95,8 +99,7 @@ artifact and a recoverable copy exists.
 - Preserve fixed-length Model V1 behavior until a measured candidate satisfies
   documented promotion criteria.
 - Prefer incremental compatibility shims over a repository-wide rewrite.
-- Format and lint with the tools configured in `pyproject.toml` once Milestone 1
-  adds them.
+- Format and lint with the tools configured in `pyproject.toml`.
 
 ## Testing requirements
 
@@ -175,7 +178,7 @@ A change or milestone is done only when:
 
 - existing behavior is preserved or an intentional change is documented;
 - relevant automated tests pass and their real output is reported;
-- formatting, linting, and practical type checks pass once configured;
+- formatting, linting, and practical type checks pass;
 - documentation and reproducible Windows commands are current;
 - dataset and model provenance are recorded without fabricated metrics;
 - no secrets, unauthorized data, or unnecessary artifacts are included;

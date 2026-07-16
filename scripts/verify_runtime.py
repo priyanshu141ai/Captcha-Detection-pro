@@ -7,8 +7,7 @@ from pathlib import Path
 import torch
 from PIL import Image
 
-from src.inference import CaptchaRecognizer
-
+from cipherlens.inference import CaptchaRecognizer
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKPOINT = ROOT / "models" / "captcha_crnn.pt"

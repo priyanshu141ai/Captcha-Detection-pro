@@ -2,33 +2,52 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import random
+import logging
 import time
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
-import numpy as np
 import torch
 from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from src.data import (
+from cipherlens.config import ConfigurationError, load_project_settings
+from cipherlens.data import (
     CaptchaDataset,
     collate_captchas,
     coverage_aware_split,
     load_samples,
     observed_charset,
 )
-from src.model import CaptchaCodec, CaptchaCRNN, ModelConfig, levenshtein_distance
+from cipherlens.logging import configure_logging
+from cipherlens.models import CaptchaCodec, CaptchaCRNN, ModelConfig, levenshtein_distance
+from cipherlens.utils import seed_everything
+
+ROOT = Path(__file__).resolve().parent
+LOGGER = logging.getLogger("cipherlens.training")
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    config_parser = argparse.ArgumentParser(add_help=False)
+    config_parser.add_argument("--config", type=Path)
+    config_args, _ = config_parser.parse_known_args(argv)
+    try:
+        settings = load_project_settings(ROOT, config_path=config_args.config)
+    except ConfigurationError as error:
+        config_parser.error(str(error))
+
+    defaults = settings.training
     parser = argparse.ArgumentParser(description="Train the CipherLens CRNN CAPTCHA recognizer.")
-    parser.add_argument("--labels", type=Path, default=Path("labels.txt"))
-    parser.add_argument("--images", type=Path, default=Path("data/batch_0"))
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="YAML defaults file. CIPHERLENS_CONFIG is used when this is omitted.",
+    )
+    parser.add_argument("--labels", type=Path, default=defaults.labels_path)
+    parser.add_argument("--images", type=Path, default=defaults.images_path)
     parser.add_argument(
         "--extra-dataset",
         nargs=2,
@@ -38,51 +57,59 @@ def parse_args() -> argparse.Namespace:
         metavar=("LABELS", "IMAGES"),
         help="Additional label file and image directory. May be supplied multiple times.",
     )
-    parser.add_argument("--output", type=Path, default=Path("models/captcha_crnn.pt"))
+    parser.add_argument("--output", type=Path, default=defaults.output_path)
     parser.add_argument(
         "--init-checkpoint",
         type=Path,
         help="Warm-start from a checkpoint, preserving weights for shared characters.",
     )
-    parser.add_argument("--epochs", type=int, default=60)
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--learning-rate", type=float, default=1e-3)
-    parser.add_argument("--validation-fraction", type=float, default=0.2)
-    parser.add_argument("--patience", type=int, default=15)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    parser.add_argument("--epochs", type=int, default=defaults.epochs)
+    parser.add_argument("--batch-size", type=int, default=defaults.batch_size)
+    parser.add_argument("--learning-rate", type=float, default=defaults.learning_rate)
+    parser.add_argument("--validation-fraction", type=float, default=defaults.validation_fraction)
+    parser.add_argument("--patience", type=int, default=defaults.patience)
+    parser.add_argument("--seed", type=int, default=defaults.seed)
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default=defaults.device)
     parser.add_argument(
         "--num-workers",
         type=int,
-        default=0,
+        default=defaults.num_workers,
         help="DataLoader worker processes. Keep at 0 on Windows unless benchmarked.",
     )
     parser.add_argument(
         "--torch-threads",
         type=int,
-        default=min(4, os.cpu_count() or 1),
+        default=defaults.torch_threads,
         help="Maximum CPU threads used by PyTorch.",
     )
     parser.add_argument(
         "--no-cache-images",
-        action="store_true",
+        action="store_false",
+        dest="cache_images",
+        default=defaults.cache_images,
         help="Read images from disk every epoch instead of caching compressed bytes in memory.",
     )
     parser.add_argument(
         "--history-output",
         type=Path,
-        default=Path("training_history.json"),
+        default=defaults.history_output_path,
         help="JSON training-history output path.",
     )
-    return parser.parse_args()
-
-
-def seed_everything(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+    parser.add_argument(
+        "--deterministic",
+        action="store_true",
+        default=defaults.deterministic,
+        help="Request deterministic PyTorch algorithms; may reduce performance.",
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
+        default=settings.runtime.log_level,
+    )
+    parser.add_argument(
+        "--log-format", choices=("console", "json"), default=settings.runtime.log_format
+    )
+    return parser.parse_args(argv)
 
 
 def choose_device(requested: str) -> torch.device:
@@ -119,7 +146,9 @@ def warm_start_model(
     for character in shared_characters:
         old_index = checkpoint_codec.char_to_index[character]
         new_index = codec.char_to_index[character]
-        model_state["classifier.weight"][new_index] = checkpoint_state["classifier.weight"][old_index]
+        model_state["classifier.weight"][new_index] = checkpoint_state["classifier.weight"][
+            old_index
+        ]
         model_state["classifier.bias"][new_index] = checkpoint_state["classifier.bias"][old_index]
 
     model.load_state_dict(model_state)
@@ -128,7 +157,7 @@ def warm_start_model(
 
 def evaluate(
     model: CaptchaCRNN,
-    loader: DataLoader,
+    loader: DataLoader[Any],
     codec: CaptchaCodec,
     loss_fn: nn.CrossEntropyLoss,
     device: torch.device,
@@ -149,7 +178,7 @@ def evaluate(
             predictions = codec.greedy_decode(logits)
 
             total_loss += float(loss) * images.shape[0]
-            for (prediction, _), label in zip(predictions, labels):
+            for (prediction, _), label in zip(predictions, labels, strict=True):
                 exact_matches += int(prediction == label)
                 edit_distance += levenshtein_distance(prediction, label)
                 character_count += len(label)
@@ -164,6 +193,7 @@ def evaluate(
 
 def main() -> None:
     args = parse_args()
+    configure_logging(args.log_level.upper(), args.log_format)
     if args.epochs < 1 or args.batch_size < 1 or args.patience < 1:
         raise ValueError("epochs, batch-size, and patience must be positive.")
     if args.learning_rate <= 0:
@@ -173,7 +203,7 @@ def main() -> None:
     if args.num_workers < 0 or args.torch_threads < 1:
         raise ValueError("num-workers cannot be negative and torch-threads must be positive.")
 
-    seed_everything(args.seed)
+    seed_everything(args.seed, deterministic=args.deterministic)
     torch.set_num_threads(args.torch_threads)
     device = choose_device(args.device)
     config = ModelConfig()
@@ -204,7 +234,7 @@ def main() -> None:
             codec,
             config,
             augment=True,
-            cache_images=not args.no_cache_images,
+            cache_images=args.cache_images,
         ),
         batch_size=args.batch_size,
         shuffle=True,
@@ -216,7 +246,7 @@ def main() -> None:
             codec,
             config,
             augment=False,
-            cache_images=not args.no_cache_images,
+            cache_images=args.cache_images,
         ),
         batch_size=args.batch_size,
         shuffle=False,
@@ -226,14 +256,19 @@ def main() -> None:
     model = CaptchaCRNN(codec.num_classes, config).to(device)
     if args.init_checkpoint is not None:
         shared_count = warm_start_model(model, codec, args.init_checkpoint)
-        print(
-            f"initialized_from={args.init_checkpoint} shared_character_weights={shared_count}"
+        LOGGER.info(
+            "initialized_from=%s shared_character_weights=%d",
+            args.init_checkpoint,
+            shared_count,
+            extra={"event": "training_warm_start"},
         )
     character_counts = torch.zeros(codec.num_classes, dtype=torch.float32)
     for sample in training_samples:
         for character in sample.label:
             character_counts[codec.char_to_index[character]] += 1
-    class_weights = torch.sqrt(character_counts.max() / character_counts.clamp_min(1.0)).clamp_max(4.0)
+    class_weights = torch.sqrt(character_counts.max() / character_counts.clamp_min(1.0)).clamp_max(
+        4.0
+    )
     class_weights /= class_weights.mean()
     loss_fn = nn.CrossEntropyLoss(weight=class_weights.to(device))
     optimizer = AdamW(model.parameters(), lr=args.learning_rate, weight_decay=1e-4)
@@ -245,10 +280,15 @@ def main() -> None:
     stale_epochs = 0
     started = time.perf_counter()
 
-    print(
-        f"device={device} datasets={len(dataset_sources)} samples={len(samples)} "
-        f"train={len(training_samples)} "
-        f"validation={len(validation_samples)} charset={charset!r}"
+    LOGGER.info(
+        "device=%s datasets=%d samples=%d train=%d validation=%d charset=%r",
+        device,
+        len(dataset_sources),
+        len(samples),
+        len(training_samples),
+        len(validation_samples),
+        charset,
+        extra={"event": "training_started", "device": str(device), "sample_count": len(samples)},
     )
 
     for epoch in range(1, args.epochs + 1):
@@ -275,10 +315,14 @@ def main() -> None:
             **metrics,
         }
         history.append(record)
-        print(
-            f"epoch={epoch:03d} train_loss={record['train_loss']:.4f} "
-            f"val_loss={metrics['loss']:.4f} char_acc={metrics['character_accuracy']:.3f} "
-            f"exact_acc={metrics['exact_accuracy']:.3f}"
+        LOGGER.info(
+            "epoch=%03d train_loss=%.4f val_loss=%.4f char_acc=%.3f exact_acc=%.3f",
+            epoch,
+            record["train_loss"],
+            metrics["loss"],
+            metrics["character_accuracy"],
+            metrics["exact_accuracy"],
+            extra={"event": "training_epoch", "epoch": epoch},
         )
 
         score = (
@@ -317,15 +361,22 @@ def main() -> None:
         else:
             stale_epochs += 1
             if stale_epochs >= args.patience:
-                print(f"Early stopping after {epoch} epochs.")
+                LOGGER.info(
+                    "Early stopping after %d epochs.",
+                    epoch,
+                    extra={"event": "training_early_stop", "epoch": epoch},
+                )
                 break
 
     args.history_output.parent.mkdir(parents=True, exist_ok=True)
     args.history_output.write_text(json.dumps(history, indent=2), encoding="utf-8")
     elapsed = time.perf_counter() - started
-    print(
-        f"saved={args.output} best_character_accuracy={best_score[0]:.3f} "
-        f"elapsed_seconds={elapsed:.1f}"
+    LOGGER.info(
+        "saved=%s best_character_accuracy=%.3f elapsed_seconds=%.1f",
+        args.output,
+        best_score[0],
+        elapsed,
+        extra={"event": "training_completed"},
     )
 
 

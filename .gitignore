@@ -1,11 +1,51 @@
+# Python environments and caches
 .venv/
+.venv-*/
+venv/
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
-.streamlit/secrets.toml
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Packaging and build outputs
+build/
+dist/
+*.egg-info/
+
+# Local configuration and secrets
 .env
+.env.*
+!.env.example
+.streamlit/secrets.toml
 .docker-config/
-tmp/
+
+# Generated training, evaluation, and model artifacts
+artifacts/
+reports/evaluation/
+reports/figures/
 training_history.json
+models/*.pt
+!models/captcha_crnn.pt
+*.pt.tmp
+
+# Local or generated datasets and archives
+data/external/
+data/generated/
+data/private/
 batch_0_zip.zip
 batch_1_zip.zip
+*.tar
+*.tar.gz
+
+# Editors, operating systems, and temporary files
+.idea/
+.DS_Store
+Thumbs.db
+tmp/
+temp/
+*.log

@@ -9,10 +9,25 @@ from PIL import Image
 
 from src.data import CaptchaDataset, CaptchaSample
 from src.model import CaptchaCodec, CaptchaCRNN, ModelConfig
-from train import warm_start_model
+from train import parse_args, warm_start_model
 
 
 class TrainingPipelineTests(unittest.TestCase):
+    def test_yaml_defaults_and_cli_overrides_are_applied(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "training.yaml"
+            config.write_text(
+                "training:\n  epochs: 3\n  batch_size: 8\n  seed: 7\n", encoding="utf-8"
+            )
+
+            configured = parse_args(["--config", str(config)])
+            overridden = parse_args(["--config", str(config), "--epochs", "5"])
+
+        self.assertEqual(configured.epochs, 3)
+        self.assertEqual(configured.batch_size, 8)
+        self.assertEqual(configured.seed, 7)
+        self.assertEqual(overridden.epochs, 5)
+
     def test_warm_start_preserves_shared_classifier_rows(self) -> None:
         config = ModelConfig()
         old_codec = CaptchaCodec("AB")

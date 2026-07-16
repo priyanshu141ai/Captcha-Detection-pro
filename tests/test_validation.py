@@ -29,17 +29,14 @@ class UploadValidationTests(unittest.TestCase):
     def test_rejects_empty_invalid_and_unsupported_files(self) -> None:
         cases = (b"", b"not-an-image", encoded_image("GIF"))
         for data in cases:
-            with self.subTest(size=len(data)):
-                with self.assertRaises(UploadValidationError):
-                    load_uploaded_image(data)
+            with self.subTest(size=len(data)), self.assertRaises(UploadValidationError):
+                load_uploaded_image(data)
 
     def test_enforces_byte_and_pixel_limits(self) -> None:
         with self.assertRaises(UploadValidationError):
             load_uploaded_image(b"1234", UploadLimits(max_bytes=3))
         with self.assertRaises(UploadValidationError):
-            load_uploaded_image(
-                encoded_image(size=(11, 10)), UploadLimits(max_pixels=100)
-            )
+            load_uploaded_image(encoded_image(size=(11, 10)), UploadLimits(max_pixels=100))
 
 
 class CheckpointValidationTests(unittest.TestCase):

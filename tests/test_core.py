@@ -10,7 +10,6 @@ from src.data import coverage_aware_split, load_samples, observed_charset, prepa
 from src.inference import CaptchaRecognizer
 from src.model import CaptchaCodec, CaptchaCRNN, ModelConfig, levenshtein_distance
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -32,7 +31,9 @@ class CipherLensCoreTests(unittest.TestCase):
         samples = load_samples(ROOT / "requirements2.txt", ROOT / "data" / "batch_1")
         self.assertEqual(len(samples), 500)
         self.assertEqual({len(sample.label) for sample in samples}, {6})
-        self.assertFalse({sample.path for sample in self.samples} & {sample.path for sample in samples})
+        self.assertFalse(
+            {sample.path for sample in self.samples} & {sample.path for sample in samples}
+        )
 
     def test_model_output_has_six_character_positions(self) -> None:
         config = ModelConfig()
