@@ -31,8 +31,11 @@ class RuntimeSettings:
 class TrainingSettings:
     labels_path: Path = Path("labels.txt")
     images_path: Path = Path("data/batch_0")
-    output_path: Path = Path("models/captcha_crnn.pt")
-    history_output_path: Path = Path("training_history.json")
+    output_path: Path = Path("models/captcha_crnn_candidate.pt")
+    history_output_path: Path = Path("artifacts/candidate-training-history.json")
+    resume_output_path: Path = Path("artifacts/candidate-training-resume.pt")
+    split_manifest_path: Path | None = Path("artifacts/split_manifest.csv")
+    dataset_report_path: Path | None = Path("artifacts/dataset_report.json")
     epochs: int = 60
     batch_size: int = 32
     learning_rate: float = 1e-3
@@ -44,6 +47,14 @@ class TrainingSettings:
     torch_threads: int = min(4, os.cpu_count() or 1)
     cache_images: bool = True
     deterministic: bool = False
+    weight_decay: float = 1e-4
+    gradient_clip_norm: float = 5.0
+    scheduler_factor: float = 0.5
+    scheduler_patience: int = 4
+    mlflow_enabled: bool = False
+    mlflow_tracking_uri: str | None = None
+    mlflow_experiment: str = "CipherLens"
+    mlflow_run_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +105,9 @@ _TRAINING_KEYS = {
     "images_path",
     "output_path",
     "history_output_path",
+    "resume_output_path",
+    "split_manifest_path",
+    "dataset_report_path",
     "epochs",
     "batch_size",
     "learning_rate",
@@ -105,6 +119,14 @@ _TRAINING_KEYS = {
     "torch_threads",
     "cache_images",
     "deterministic",
+    "weight_decay",
+    "gradient_clip_norm",
+    "scheduler_factor",
+    "scheduler_patience",
+    "mlflow_enabled",
+    "mlflow_tracking_uri",
+    "mlflow_experiment",
+    "mlflow_run_name",
 }
 _DATASET_KEYS = {
     "name",
@@ -229,6 +251,14 @@ def _resolved_path(value: object, name: str, project_root: Path) -> Path:
     return path.resolve()
 
 
+def _optional_path(value: object, name: str) -> Path | None:
+    return None if value is None else Path(_non_empty_string(value, name))
+
+
+def _optional_string(value: object, name: str) -> str | None:
+    return None if value is None else _non_empty_string(value, name)
+
+
 def validate_torch_threads(value: object, name: str = "torch_threads") -> int:
     """Validate a bounded process-wide PyTorch CPU thread count."""
     return _integer(value, name, minimum=1, maximum=256)
@@ -320,6 +350,20 @@ def _training_settings(values: Mapping[str, object]) -> TrainingSettings:
                 "training.history_output_path",
             )
         ),
+        resume_output_path=Path(
+            _non_empty_string(
+                values.get("resume_output_path", defaults.resume_output_path),
+                "training.resume_output_path",
+            )
+        ),
+        split_manifest_path=_optional_path(
+            values.get("split_manifest_path", defaults.split_manifest_path),
+            "training.split_manifest_path",
+        ),
+        dataset_report_path=_optional_path(
+            values.get("dataset_report_path", defaults.dataset_report_path),
+            "training.dataset_report_path",
+        ),
         epochs=_integer(values.get("epochs", defaults.epochs), "training.epochs", minimum=1),
         batch_size=_integer(
             values.get("batch_size", defaults.batch_size), "training.batch_size", minimum=1
@@ -362,6 +406,48 @@ def _training_settings(values: Mapping[str, object]) -> TrainingSettings:
         ),
         deterministic=_boolean(
             values.get("deterministic", defaults.deterministic), "training.deterministic"
+        ),
+        weight_decay=_floating(
+            values.get("weight_decay", defaults.weight_decay),
+            "training.weight_decay",
+            minimum=0.0,
+            maximum=1.0,
+        ),
+        gradient_clip_norm=_floating(
+            values.get("gradient_clip_norm", defaults.gradient_clip_norm),
+            "training.gradient_clip_norm",
+            minimum=0.0,
+            maximum=1_000.0,
+            inclusive_minimum=False,
+        ),
+        scheduler_factor=_floating(
+            values.get("scheduler_factor", defaults.scheduler_factor),
+            "training.scheduler_factor",
+            minimum=0.0,
+            maximum=1.0,
+            inclusive_minimum=False,
+            inclusive_maximum=False,
+        ),
+        scheduler_patience=_integer(
+            values.get("scheduler_patience", defaults.scheduler_patience),
+            "training.scheduler_patience",
+            minimum=0,
+        ),
+        mlflow_enabled=_boolean(
+            values.get("mlflow_enabled", defaults.mlflow_enabled),
+            "training.mlflow_enabled",
+        ),
+        mlflow_tracking_uri=_optional_string(
+            values.get("mlflow_tracking_uri", defaults.mlflow_tracking_uri),
+            "training.mlflow_tracking_uri",
+        ),
+        mlflow_experiment=_non_empty_string(
+            values.get("mlflow_experiment", defaults.mlflow_experiment),
+            "training.mlflow_experiment",
+        ),
+        mlflow_run_name=_optional_string(
+            values.get("mlflow_run_name", defaults.mlflow_run_name),
+            "training.mlflow_run_name",
         ),
     )
 

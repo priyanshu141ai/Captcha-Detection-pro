@@ -25,6 +25,10 @@ from cipherlens.data.audit import (
 )
 from cipherlens.models import CaptchaCodec, ModelConfig
 
+PREPROCESSING_VERSION = "1.0"
+NORMALIZATION_MEAN = 0.5
+NORMALIZATION_STD = 0.5
+
 
 @dataclass(frozen=True)
 class CaptchaSample:
@@ -106,7 +110,7 @@ def prepare_image(
     tensor = torch.from_numpy(array).permute(2, 0, 1)
     if augment and random.random() < 0.35:
         tensor = (tensor + torch.randn_like(tensor) * random.uniform(0.005, 0.025)).clamp(0.0, 1.0)
-    return (tensor - 0.5) / 0.5
+    return (tensor - NORMALIZATION_MEAN) / NORMALIZATION_STD
 
 
 class CaptchaDataset(Dataset[tuple[Tensor, Tensor, str]]):
@@ -145,6 +149,9 @@ def collate_captchas(
 
 
 __all__ = [
+    "NORMALIZATION_MEAN",
+    "NORMALIZATION_STD",
+    "PREPROCESSING_VERSION",
     "AuditIssue",
     "AuditedSample",
     "CaptchaDataset",

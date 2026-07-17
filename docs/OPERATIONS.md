@@ -150,8 +150,13 @@ Train to a candidate path instead of overwriting production immediately:
   --init-checkpoint models/captcha_crnn.pt `
   --output models/captcha_crnn_candidate.pt `
   --history-output artifacts/candidate-history.json `
+  --resume-output artifacts/candidate-resume.pt `
   --learning-rate 0.0002
 ```
+
+Resume safely with `--resume-checkpoint artifacts/candidate-resume.pt`. The CLI
+refuses to use the approved production checkpoint as either candidate or resume
+output. It verifies selected image hashes against the versioned split manifest.
 
 Compare the candidate on an independent test set. Promote it only after exact
 accuracy, per-character accuracy, latency, and new-character coverage pass the

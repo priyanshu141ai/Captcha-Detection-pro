@@ -28,6 +28,13 @@ class ReproducibilityTests(unittest.TestCase):
 
         self.assertTrue(torch.equal(first, second))
 
+    def test_disabling_determinism_resets_torch_state(self) -> None:
+        seed_everything(7, deterministic=True)
+        self.assertTrue(torch.are_deterministic_algorithms_enabled())
+
+        seed_everything(7, deterministic=False)
+        self.assertFalse(torch.are_deterministic_algorithms_enabled())
+
     def test_seed_validation_rejects_boolean_negative_and_too_large_values(self) -> None:
         for seed in (True, -1, 2**32):
             with self.subTest(seed=seed), self.assertRaises((TypeError, ValueError)):

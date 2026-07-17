@@ -294,16 +294,17 @@ Training performs the following sequence:
 2. Selects CPU or CUDA.
 3. Loads and validates labels and images.
 4. Builds the observed character set.
-5. Creates a coverage-aware split.
+5. Verifies image hashes and loads train/validation rows from the versioned manifest.
 6. Creates augmented training and unaugmented validation loaders.
 7. Builds the CRNN.
 8. Calculates class weights from training-character frequencies.
 9. Optimizes with AdamW.
 10. Reduces the learning rate when validation loss stalls.
 11. Clips gradients to a maximum norm of `5.0`.
-12. Atomically saves the checkpoint with the best character accuracy, using
+12. Atomically saves a candidate checkpoint with the best character accuracy, using
     exact accuracy and validation loss as tie-breakers.
-13. Stops early when validation character accuracy no longer improves.
+13. Saves resumable optimizer, scheduler, early-stopping, RNG, and loader state.
+14. Stops early when validation character accuracy no longer improves.
 
 ### 8.1 Command-line arguments
 
@@ -312,8 +313,11 @@ Training performs the following sequence:
 | `--labels` | `labels.txt` | Label mapping file |
 | `--images` | `data/batch_0` | CAPTCHA image directory |
 | `--extra-dataset LABELS IMAGES` | none | Additional label file and image directory; repeatable |
-| `--output` | `models/captcha_crnn.pt` | Checkpoint output path |
+| `--output` | `models/captcha_crnn_candidate.pt` | Candidate checkpoint path |
 | `--init-checkpoint` | none | Warm-start weights and shared character classifiers |
+| `--resume-checkpoint` | none | Resume a compatible interrupted run |
+| `--resume-output` | `artifacts/candidate-training-resume.pt` | Latest resumable state |
+| `--split-manifest` | `artifacts/split_manifest.csv` | Versioned split and hash source |
 | `--epochs` | `60` | Maximum training epochs |
 | `--batch-size` | `32` | Samples per optimizer step |
 | `--learning-rate` | `0.001` | Initial AdamW learning rate |
@@ -324,9 +328,10 @@ Training performs the following sequence:
 | `--num-workers` | `0` | DataLoader worker processes |
 | `--torch-threads` | up to `4` | Maximum CPU threads used by PyTorch |
 | `--no-cache-images` | disabled | Read images from disk on every epoch |
-| `--history-output` | `training_history.json` | JSON metric-history path |
+| `--history-output` | `artifacts/candidate-training-history.json` | JSON metric-history path |
 | `--config` | `configs/default.yaml` | YAML defaults file |
 | `--deterministic` | disabled | Request deterministic PyTorch algorithms |
+| `--mlflow` | disabled | Enable optional MLflow experiment tracking |
 | `--log-level` | `INFO` | Structured logging level |
 | `--log-format` | `console` | `console` or `json` logging |
 
@@ -344,7 +349,9 @@ python train.py --extra-dataset requirements2.txt data/batch_1
 
 The default `--labels` and `--images` dataset is always loaded first. Each
 `--extra-dataset` pair is then appended. Duplicate resolved image paths are
-rejected to prevent accidentally training on the same files twice.
+rejected. Selected paths, labels, hashes, and split roles must match the manifest;
+external-test or excluded rows are rejected. `--no-split-manifest` is available
+only for explicitly managed custom datasets and creates a deterministic local hash.
 
 When `--init-checkpoint` is provided, convolutional and recurrent weights are
 restored from that checkpoint. Classifier rows are copied by character name,
@@ -388,9 +395,20 @@ The included checkpoint achieved:
 
 These metrics apply to the deterministic split of the supplied dataset and should not be treated as broad real-world CAPTCHA performance.
 
+### 8.5 Resume and optional tracking
+
+The resume artifact stores current and best model states, optimizer, scheduler,
+early-stopping state, history, and serializable RNG states. Resume requires the
+same architecture, vocabulary, and dataset version. Exact worker-process resume
+reproducibility is promised only with the default `--num-workers 0`.
+
+MLflow is optional (`pip install -e ".[tracking]"`) and imported only when
+`--mlflow` is enabled. Local JSON/checkpoint logging works without MLflow.
+
 ## 9. Checkpoint format
 
-The checkpoint at `models/captcha_crnn.pt` is a PyTorch dictionary:
+The approved legacy checkpoint remains loadable. New candidate checkpoints use
+schema version 2 while retaining the compatible top-level inference fields:
 
 ```python
 {
@@ -399,8 +417,21 @@ The checkpoint at `models/captcha_crnn.pt` is a PyTorch dictionary:
     "model_config": ...,      # Serialized ModelConfig fields
     "metrics": ...,           # Best validation metrics
     "epoch": ...,             # Selected epoch number
+    "metadata": {             # Complete reproducibility/provenance record
+        "architecture": ...,
+        "preprocessing": ...,
+        "dataset": ...,
+        "training_config": ...,
+        "environment": ...,
+        "git_commit": ...,
+    },
+    "created_at": ...,
 }
 ```
+
+The metadata records the model/version, vocabulary through `charset`, input
+dimensions, normalization, dataset/split/selection hashes, full run settings,
+best validation metrics, Git commit when available, environment, and UTC time.
 
 Inference and warm-start loading use PyTorch's restricted `weights_only=True`
 mode and validate required checkpoint fields. Checkpoints should still come only

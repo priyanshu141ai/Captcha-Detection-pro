@@ -123,6 +123,22 @@ The best checkpoint is written to the explicit candidate path. Review independen
 evaluation evidence before promoting a candidate; do not replace
 `models/captcha_crnn.pt` during routine training.
 
+Training verifies image hashes and assignments against
+`artifacts/split_manifest.csv`. Each candidate stores architecture,
+preprocessing, dataset/split versions, configuration, metrics, Git commit, and
+creation time. Resume an interrupted run with:
+
+```powershell
+python train.py --resume-checkpoint artifacts/candidate-training-resume.pt
+```
+
+Optional MLflow 3 tracking remains disabled unless requested:
+
+```powershell
+python -m pip install --editable ".[tracking]"
+python train.py --mlflow --mlflow-experiment CipherLens
+```
+
 ## Run the app
 
 ```powershell

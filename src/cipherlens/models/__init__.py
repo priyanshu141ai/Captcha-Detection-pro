@@ -10,6 +10,9 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
+MODEL_ARCHITECTURE_NAME = "captcha_crnn_positionwise"
+MODEL_VERSION = "1.0"
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -123,6 +126,8 @@ def levenshtein_distance(left: str, right: str) -> int:
 
 
 __all__ = [
+    "MODEL_ARCHITECTURE_NAME",
+    "MODEL_VERSION",
     "CaptchaCRNN",
     "CaptchaCodec",
     "ConvBlock",

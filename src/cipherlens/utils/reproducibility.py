@@ -33,11 +33,11 @@ def seed_everything(seed: int, *, deterministic: bool = False) -> Reproducibilit
     cuda_available = torch.cuda.is_available()
     if cuda_available:
         torch.cuda.manual_seed_all(validated_seed)
-    if deterministic:
-        torch.use_deterministic_algorithms(True)
-        if torch.backends.cudnn.is_available():
+    torch.use_deterministic_algorithms(deterministic)
+    if torch.backends.cudnn.is_available():
+        torch.backends.cudnn.deterministic = deterministic
+        if deterministic:
             torch.backends.cudnn.benchmark = False
-            torch.backends.cudnn.deterministic = True
     return ReproducibilityState(
         seed=validated_seed,
         deterministic_algorithms=deterministic,

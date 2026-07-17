@@ -10,8 +10,11 @@ runtime:
 training:
   labels_path: labels.txt
   images_path: data/batch_0
-  output_path: models/captcha_crnn.pt
-  history_output_path: training_history.json
+  output_path: models/captcha_crnn_candidate.pt
+  history_output_path: artifacts/candidate-training-history.json
+  resume_output_path: artifacts/candidate-training-resume.pt
+  split_manifest_path: artifacts/split_manifest.csv
+  dataset_report_path: artifacts/dataset_report.json
   epochs: 60
   batch_size: 32
   learning_rate: 0.001
@@ -22,6 +25,14 @@ training:
   num_workers: 0
   cache_images: true
   deterministic: false
+  weight_decay: 0.0001
+  gradient_clip_norm: 5.0
+  scheduler_factor: 0.5
+  scheduler_patience: 4
+  mlflow_enabled: false
+  mlflow_tracking_uri:
+  mlflow_experiment: CipherLens
+  mlflow_run_name:
 
 dataset:
   name: cipherlens-repository-dataset

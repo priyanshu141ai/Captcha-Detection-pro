@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,7 @@ from PIL import Image
 
 from src.data import CaptchaDataset, CaptchaSample
 from src.model import CaptchaCodec, CaptchaCRNN, ModelConfig
+from train import main as training_main
 from train import parse_args, warm_start_model
 
 
@@ -26,6 +28,8 @@ class TrainingPipelineTests(unittest.TestCase):
         self.assertEqual(configured.epochs, 3)
         self.assertEqual(configured.batch_size, 8)
         self.assertEqual(configured.seed, 7)
+        self.assertEqual(configured.output, Path("models/captcha_crnn_candidate.pt"))
+        self.assertEqual(configured.split_manifest, Path("artifacts/split_manifest.csv"))
         self.assertEqual(overridden.epochs, 5)
 
     def test_warm_start_preserves_shared_classifier_rows(self) -> None:
@@ -79,6 +83,62 @@ class TrainingPipelineTests(unittest.TestCase):
         self.assertEqual(tuple(tensor.shape), (3, 48, 176))
         self.assertEqual(tuple(target.shape), (6,))
         self.assertEqual(label, "AAAAAA")
+
+    def test_tiny_candidate_training_and_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            images = root / "images"
+            images.mkdir()
+            labels = ("AAAAAB", "AAAABA", "AAABAA", "AABAAA")
+            for index, _label in enumerate(labels):
+                Image.new("RGB", (151, 41), (index * 40, 50, 100)).save(images / f"{index}.png")
+            labels_path = root / "labels.txt"
+            labels_path.write_text(
+                "".join(f"{index}.png {label}\n" for index, label in enumerate(labels)),
+                encoding="utf-8",
+            )
+            candidate = root / "candidate.pt"
+            resume = root / "resume.pt"
+            history = root / "history.json"
+            common = [
+                "--labels",
+                str(labels_path),
+                "--images",
+                str(images),
+                "--no-split-manifest",
+                "--no-dataset-report",
+                "--output",
+                str(candidate),
+                "--resume-output",
+                str(resume),
+                "--history-output",
+                str(history),
+                "--batch-size",
+                "2",
+                "--device",
+                "cpu",
+                "--torch-threads",
+                "1",
+                "--no-cache-images",
+            ]
+
+            self.assertEqual(training_main([*common, "--epochs", "1"]), 0)
+            self.assertTrue(candidate.is_file())
+            self.assertTrue(resume.is_file())
+            self.assertEqual(len(json.loads(history.read_text(encoding="utf-8"))), 1)
+            self.assertEqual(
+                training_main(
+                    [
+                        *common,
+                        "--epochs",
+                        "2",
+                        "--resume-checkpoint",
+                        str(resume),
+                    ]
+                ),
+                0,
+            )
+            self.assertEqual(len(json.loads(history.read_text(encoding="utf-8"))), 2)
 
 
 if __name__ == "__main__":

@@ -22,7 +22,10 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(settings.runtime.confidence_threshold, 0.75)
         self.assertEqual(settings.runtime.max_upload_bytes, 10 * 1024 * 1024)
         self.assertEqual(settings.training.seed, 42)
-        self.assertEqual(settings.training.output_path, Path("models/captcha_crnn.pt"))
+        self.assertEqual(settings.training.output_path, Path("models/captcha_crnn_candidate.pt"))
+        self.assertEqual(
+            settings.training.split_manifest_path, Path("artifacts/split_manifest.csv")
+        )
         self.assertEqual(len(settings.dataset.sources), 2)
         self.assertEqual(settings.dataset.expected_width, 151)
         self.assertEqual(settings.dataset.label_length, 6)
@@ -114,6 +117,17 @@ class ConfigurationTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ConfigurationError, "development source"):
                 load_settings(config, project_root=root, environ={})
+
+    def test_training_optimizer_settings_are_bounded(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases = {"weight_decay": 2, "gradient_clip_norm": 0, "scheduler_factor": 1}
+            for name, value in cases.items():
+                with self.subTest(name=name):
+                    config = root / f"{name}.yaml"
+                    config.write_text(f"training:\n  {name}: {value}\n", encoding="utf-8")
+                    with self.assertRaises(ConfigurationError):
+                        load_settings(config, project_root=root, environ={})
 
 
 class StructuredLoggingTests(unittest.TestCase):
