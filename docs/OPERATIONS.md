@@ -21,6 +21,16 @@ cd "C:\path\to\Captcha-Detection"
 
 Open `http://127.0.0.1:8501`.
 
+Start the separate inference API:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn cipherlens.api:app `
+  --host 127.0.0.1 --port 8000
+```
+
+OpenAPI is available at `http://127.0.0.1:8000/docs`. The current Docker image
+continues to serve Streamlit; API container topology is handled in Milestone 9.
+
 ## Docker startup
 
 ```powershell
@@ -62,6 +72,19 @@ The Docker health check verifies both the checkpoint file and the Streamlit
 health endpoint. CI additionally loads the checkpoint and performs known-image
 predictions from both data batches.
 
+FastAPI service checks:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+Invoke-RestMethod http://127.0.0.1:8000/ready
+Invoke-RestMethod http://127.0.0.1:8000/model-info
+Invoke-WebRequest http://127.0.0.1:8000/metrics -UseBasicParsing
+```
+
+`/health` reports process liveness. `/ready` returns HTTP 503 until the model is
+loaded. A missing or invalid checkpoint keeps liveness available while readiness
+and model-dependent endpoints remain unavailable.
+
 ## Runtime configuration
 
 | Environment variable | Default | Purpose |
@@ -74,6 +97,8 @@ predictions from both data batches.
 | `CIPHERLENS_MAX_UPLOAD_PIXELS` | `4000000` | Maximum decoded image pixel count |
 | `CIPHERLENS_LOG_LEVEL` | `INFO` | Application logging level |
 | `CIPHERLENS_LOG_FORMAT` | `console` | `console` or newline-delimited `json` logs |
+| `CIPHERLENS_API_MAX_BATCH_SIZE` | `8` | Maximum files in one API batch |
+| `CIPHERLENS_API_MAX_CONCURRENCY` | `1` | Concurrent inference jobs per API process |
 
 Copy `.env.example` to `.env` to override Compose defaults. Do not commit `.env`
 files or secrets. Configuration is validated at startup; invalid integers,
@@ -89,6 +114,10 @@ Runtime environment variables override `configs/default.yaml`.
 - Streamlit file watching, automatic reruns, telemetry, and detailed client
   errors are disabled in production configuration.
 - Uploads are limited to 10 MB and 4,000,000 decoded pixels.
+- API multipart request bodies, file counts, and concurrent inference jobs are
+  bounded before model execution.
+- Every API request receives a generated `X-Request-ID`; uploaded names and
+  bytes are excluded from logs and metrics.
 - Training caches compressed image bytes in memory by default to avoid repeated
   disk reads.
 - `--num-workers` enables parallel data loading after workload-specific

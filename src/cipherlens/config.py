@@ -28,6 +28,12 @@ class RuntimeSettings:
 
 
 @dataclass(frozen=True)
+class APISettings:
+    max_batch_size: int = 8
+    max_inference_concurrency: int = 1
+
+
+@dataclass(frozen=True)
 class TrainingSettings:
     labels_path: Path = Path("labels.txt")
     images_path: Path = Path("data/batch_0")
@@ -102,6 +108,7 @@ class DatasetSettings:
 @dataclass(frozen=True)
 class CipherLensSettings:
     runtime: RuntimeSettings
+    api: APISettings
     training: TrainingSettings
     evaluation: EvaluationSettings
     dataset: DatasetSettings
@@ -117,6 +124,7 @@ _RUNTIME_KEYS = {
     "log_level",
     "log_format",
 }
+_API_KEYS = {"max_batch_size", "max_inference_concurrency"}
 _TRAINING_KEYS = {
     "labels_path",
     "images_path",
@@ -189,6 +197,10 @@ _ENVIRONMENT_KEYS = {
     "max_upload_pixels": "CIPHERLENS_MAX_UPLOAD_PIXELS",
     "log_level": "CIPHERLENS_LOG_LEVEL",
     "log_format": "CIPHERLENS_LOG_FORMAT",
+}
+_API_ENVIRONMENT_KEYS = {
+    "max_batch_size": "CIPHERLENS_API_MAX_BATCH_SIZE",
+    "max_inference_concurrency": "CIPHERLENS_API_MAX_CONCURRENCY",
 }
 _LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
@@ -350,6 +362,28 @@ def _runtime_settings(
         ),
         log_level=log_level,
         log_format=log_format,
+    )
+
+
+def _api_settings(values: Mapping[str, object], environment: Mapping[str, str]) -> APISettings:
+    defaults = APISettings()
+
+    def configured(name: str, default: object) -> object:
+        return environment.get(_API_ENVIRONMENT_KEYS[name], values.get(name, default))
+
+    return APISettings(
+        max_batch_size=_integer(
+            configured("max_batch_size", defaults.max_batch_size),
+            "api.max_batch_size",
+            minimum=1,
+            maximum=100,
+        ),
+        max_inference_concurrency=_integer(
+            configured("max_inference_concurrency", defaults.max_inference_concurrency),
+            "api.max_inference_concurrency",
+            minimum=1,
+            maximum=32,
+        ),
     )
 
 
@@ -705,18 +739,23 @@ def load_settings(
             raise ConfigurationError(f"Could not read configuration file: {source}") from error
         document = _as_mapping(loaded, "root")
 
-    _reject_unknown_keys(document, {"runtime", "training", "evaluation", "dataset"}, "top-level")
+    _reject_unknown_keys(
+        document, {"runtime", "api", "training", "evaluation", "dataset"}, "top-level"
+    )
     runtime_values = _as_mapping(document.get("runtime"), "runtime")
+    api_values = _as_mapping(document.get("api"), "api")
     training_values = _as_mapping(document.get("training"), "training")
     evaluation_values = _as_mapping(document.get("evaluation"), "evaluation")
     dataset_values = _as_mapping(document.get("dataset"), "dataset")
     _reject_unknown_keys(runtime_values, _RUNTIME_KEYS, "runtime")
+    _reject_unknown_keys(api_values, _API_KEYS, "api")
     _reject_unknown_keys(training_values, _TRAINING_KEYS, "training")
     _reject_unknown_keys(evaluation_values, _EVALUATION_KEYS, "evaluation")
     _reject_unknown_keys(dataset_values, _DATASET_KEYS, "dataset")
 
     return CipherLensSettings(
         runtime=_runtime_settings(runtime_values, environment, root),
+        api=_api_settings(api_values, environment),
         training=_training_settings(training_values),
         evaluation=_evaluation_settings(evaluation_values),
         dataset=_dataset_settings(dataset_values, root),

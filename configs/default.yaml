@@ -7,6 +7,10 @@ runtime:
   log_level: INFO
   log_format: console
 
+api:
+  max_batch_size: 8
+  max_inference_concurrency: 1
+
 training:
   labels_path: labels.txt
   images_path: data/batch_0

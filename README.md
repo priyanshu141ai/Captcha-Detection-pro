@@ -1,6 +1,6 @@
 # CipherLens
 
-CipherLens is a local Streamlit application that reads six-character CAPTCHA images with a compact CRNN (convolutional recurrent neural network) and six position-wise outputs from a shared character classifier.
+CipherLens is a local Streamlit and FastAPI system that reads six-character CAPTCHA images with a compact CRNN (convolutional recurrent neural network) and six position-wise outputs from a shared character classifier.
 
 Use CipherLens only with synthetic images or systems and data you own or are
 explicitly authorized to test. The project does not automate browser interaction,
@@ -69,6 +69,8 @@ override the YAML file:
 | `CIPHERLENS_MAX_UPLOAD_PIXELS` | `4000000` | Decoded image pixel limit |
 | `CIPHERLENS_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` |
 | `CIPHERLENS_LOG_FORMAT` | `console` | `console` or newline-delimited `json` |
+| `CIPHERLENS_API_MAX_BATCH_SIZE` | `8` | Maximum images per batch request |
+| `CIPHERLENS_API_MAX_CONCURRENCY` | `1` | Concurrent model inference jobs per process |
 
 Invalid values fail at startup with a field-specific message. Copy
 `.env.example` to `.env` for local Compose overrides; never commit `.env`.
@@ -180,6 +182,24 @@ streamlit run app.py
 ```
 
 Open `http://localhost:8501`, upload a PNG/JPG CAPTCHA, and select **Recognize text**.
+
+## Run the API
+
+```powershell
+python -m uvicorn cipherlens.api:app --host 127.0.0.1 --port 8000
+```
+
+OpenAPI docs are at `http://127.0.0.1:8000/docs`. Example:
+
+```powershell
+curl.exe -X POST http://127.0.0.1:8000/predict `
+  -F "file=@data/batch_0/captcha_00000.png;type=image/png"
+```
+
+The backend loads the checkpoint once per process, exposes health/readiness,
+model information, single and batch prediction, and Prometheus-compatible
+metrics. It validates extension, MIME type, bytes, decoded format, pixels, and
+image integrity; uploaded bytes are not logged or persisted.
 
 ## Production container
 

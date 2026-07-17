@@ -13,13 +13,20 @@ from PIL import Image, UnidentifiedImageError
 
 from cipherlens.config import ConfigurationError, validate_torch_threads
 from cipherlens.data import prepare_image
-from cipherlens.models import CaptchaCodec, CaptchaCRNN, ModelConfig
+from cipherlens.models import (
+    MODEL_ARCHITECTURE_NAME,
+    MODEL_VERSION,
+    CaptchaCodec,
+    CaptchaCRNN,
+    ModelConfig,
+)
 
 
 @dataclass(frozen=True)
 class Prediction:
     text: str
     confidence: float
+    per_character_confidence: tuple[float, ...] = ()
 
 
 class CheckpointValidationError(RuntimeError):
@@ -72,9 +79,13 @@ class CaptchaRecognizer:
         torch.set_num_threads(configured_threads)
 
         checkpoint = _load_checkpoint(Path(checkpoint_path), self.device)
-        self.checkpoint_version = checkpoint.get("checkpoint_version")
+        self.checkpoint_version = str(checkpoint.get("checkpoint_version") or "legacy-unversioned")
         raw_metadata = checkpoint.get("metadata")
         self.metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+        raw_architecture = self.metadata.get("architecture")
+        architecture = raw_architecture if isinstance(raw_architecture, dict) else {}
+        self.model_version = str(architecture.get("version") or MODEL_VERSION)
+        self.architecture_name = str(architecture.get("name") or MODEL_ARCHITECTURE_NAME)
         try:
             self.config = ModelConfig(**checkpoint.get("model_config", {}))
             self.codec = CaptchaCodec(checkpoint["charset"])
@@ -85,6 +96,7 @@ class CaptchaRecognizer:
                 "The model checkpoint is incompatible with this application version."
             ) from error
         self.model.eval()
+        self.parameter_count = sum(parameter.numel() for parameter in self.model.parameters())
         self.metrics = (
             checkpoint.get("metrics", {}) if isinstance(checkpoint.get("metrics"), dict) else {}
         )
@@ -92,8 +104,14 @@ class CaptchaRecognizer:
     @torch.inference_mode()
     def predict(self, image: Image.Image) -> Prediction:
         tensor = prepare_image(image, self.config, augment=False).unsqueeze(0).to(self.device)
-        text, confidence = self.codec.greedy_decode(self.model(tensor))[0]
-        return Prediction(text=text, confidence=confidence)
+        logits = self.model(tensor)
+        text, confidence = self.codec.greedy_decode(logits)[0]
+        character_confidence = logits.detach().softmax(dim=2).max(dim=2).values[:, 0]
+        return Prediction(
+            text=text,
+            confidence=confidence,
+            per_character_confidence=tuple(float(value) for value in character_confidence),
+        )
 
 
 class UploadValidationError(ValueError):

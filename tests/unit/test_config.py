@@ -21,6 +21,8 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(settings.runtime.torch_threads, 2)
         self.assertEqual(settings.runtime.confidence_threshold, 0.75)
         self.assertEqual(settings.runtime.max_upload_bytes, 10 * 1024 * 1024)
+        self.assertEqual(settings.api.max_batch_size, 8)
+        self.assertEqual(settings.api.max_inference_concurrency, 1)
         self.assertEqual(settings.training.seed, 42)
         self.assertEqual(settings.training.output_path, Path("models/captcha_crnn_candidate.pt"))
         self.assertEqual(
@@ -44,6 +46,8 @@ class ConfigurationTests(unittest.TestCase):
                 "CIPHERLENS_MAX_UPLOAD_PIXELS": "8192",
                 "CIPHERLENS_LOG_LEVEL": "warning",
                 "CIPHERLENS_LOG_FORMAT": "json",
+                "CIPHERLENS_API_MAX_BATCH_SIZE": "4",
+                "CIPHERLENS_API_MAX_CONCURRENCY": "2",
             },
         )
 
@@ -54,6 +58,8 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(settings.runtime.max_upload_pixels, 8192)
         self.assertEqual(settings.runtime.log_level, "WARNING")
         self.assertEqual(settings.runtime.log_format, "json")
+        self.assertEqual(settings.api.max_batch_size, 4)
+        self.assertEqual(settings.api.max_inference_concurrency, 2)
 
     def test_invalid_environment_values_fail_with_field_context(self) -> None:
         cases = {
@@ -62,6 +68,8 @@ class ConfigurationTests(unittest.TestCase):
             "CIPHERLENS_MAX_UPLOAD_BYTES": "0",
             "CIPHERLENS_LOG_LEVEL": "verbose",
             "CIPHERLENS_LOG_FORMAT": "xml",
+            "CIPHERLENS_API_MAX_BATCH_SIZE": "0",
+            "CIPHERLENS_API_MAX_CONCURRENCY": "33",
         }
         for name, value in cases.items():
             with self.subTest(name=name), self.assertRaises(ConfigurationError):

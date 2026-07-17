@@ -64,6 +64,7 @@ class CipherLensCoreTests(unittest.TestCase):
             prediction = recognizer.predict(image)
         self.assertEqual(prediction.text, self.samples[0].label)
         self.assertGreater(prediction.confidence, 0.8)
+        self.assertEqual(len(prediction.per_character_confidence), 6)
 
         second_batch = load_samples(ROOT / "requirements2.txt", ROOT / "data" / "batch_1")
         with Image.open(second_batch[0].path) as image:

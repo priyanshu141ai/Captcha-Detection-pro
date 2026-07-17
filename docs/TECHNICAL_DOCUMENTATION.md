@@ -7,6 +7,7 @@ CipherLens is a local CAPTCHA recognition system for fixed-length, six-character
 - a PyTorch training pipeline;
 - a compact convolutional recurrent neural network (CRNN);
 - checkpoint-based inference;
+- a separate FastAPI inference service with bounded Prometheus metrics;
 - versioned evaluation, calibration diagnostics, and static reports;
 - a Streamlit upload and recognition interface;
 - automated regression tests.
@@ -43,10 +44,12 @@ Captcha-Detection/
 |   `-- verify_runtime.py        # Production checkpoint smoke check
 |-- src/
 |   |-- cipherlens/              # Installable application package
+|   |   |-- api/                 # FastAPI routes, schemas, and upload boundary
 |   |   |-- data/                # Dataset loading, splitting, and preprocessing
 |   |   |-- evaluation/          # Metrics, calibration, benchmarks, and reports
 |   |   |-- inference/           # Checkpoint inference and upload validation
 |   |   |-- models/              # Network, codec, and edit-distance logic
+|   |   |-- monitoring/          # Bounded in-process service metrics
 |   |   |-- training/            # Optimization and checkpoint workflows
 |   |   `-- utils/               # Reproducibility helpers
 |   |-- data.py                  # Legacy compatibility import
@@ -66,6 +69,7 @@ Captcha-Detection/
 - Python 3.11
 - PyTorch
 - Streamlit
+- FastAPI, Pydantic, Uvicorn, and python-multipart
 - Pillow
 - NumPy
 
@@ -511,7 +515,7 @@ Inference and warm-start loading use PyTorch's restricted `weights_only=True`
 mode and validate required checkpoint fields. Checkpoints should still come only
 from trusted build or artifact pipelines.
 
-## 11. Inference API
+## 11. Python inference interface
 
 `CaptchaRecognizer` provides the reusable Python inference interface.
 
@@ -535,6 +539,7 @@ The returned `Prediction` dataclass contains:
 |---|---|---|
 | `text` | `str` | Six decoded characters |
 | `confidence` | `float` | Geometric-mean confidence from 0 to 1 |
+| `per_character_confidence` | `tuple[float, ...]` | Six position-wise softmax maxima |
 
 The default inference device is CPU. To use CUDA:
 
@@ -543,6 +548,26 @@ recognizer = CaptchaRecognizer("models/captcha_crnn.pt", device="cuda")
 ```
 
 CUDA inference requires a compatible PyTorch installation and GPU.
+
+### 11.1 FastAPI service
+
+Start the independent backend from the repository root:
+
+```powershell
+python -m uvicorn cipherlens.api:app --host 127.0.0.1 --port 8000
+```
+
+The service loads one `CaptchaRecognizer` during application lifespan and exposes
+`GET /health`, `GET /ready`, `GET /model-info`, `POST /predict`,
+`POST /predict/batch`, and `GET /metrics`. Interactive OpenAPI documentation is
+served at `/docs`.
+
+Upload requests use multipart fields named `file` or repeated `files`. Extension,
+declared MIME type, body/file byte size, decoded PNG/JPEG format, dimensions,
+pixel count, and integrity are checked before inference. Requests receive a new
+`X-Request-ID`; error bodies use a bounded `{error: {code, message, request_id}}`
+shape. Model execution runs off the event loop behind a configurable semaphore.
+The service never logs or deliberately persists uploaded bytes.
 
 ## 12. Streamlit application
 
@@ -597,6 +622,9 @@ Current tests verify:
 - repeated-character decoding;
 - Levenshtein-distance behavior;
 - checkpoint loading and known-image inference.
+- FastAPI health, readiness, model info, OpenAPI, single and batch prediction;
+- corrupt, oversized, MIME-mismatched, excessive-pixel, and missing-model cases;
+- request IDs, structured errors, workload limits, and service metrics.
 
 ## 14. Common errors
 
