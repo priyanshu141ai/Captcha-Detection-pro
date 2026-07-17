@@ -622,13 +622,16 @@ python -m unittest discover -s tests -v
 
 Current tests verify:
 
-- both 500-image batch contracts;
+- the optional approved 500-image batch contracts when present;
 - the deterministic split and character coverage;
 - training-character coverage;
+- generated-fixture label parsing and six-character validation;
+- preprocessing determinism and vocabulary round trips;
 - the six-position model output shape;
 - repeated-character decoding;
 - Levenshtein-distance behavior;
-- checkpoint loading and known-image inference.
+- generated-checkpoint compatibility and deterministic inference;
+- approved-checkpoint known-image inference;
 - FastAPI health, readiness, model info, OpenAPI, single and batch prediction;
 - corrupt, oversized, MIME-mismatched, excessive-pixel, and missing-model cases;
 - request IDs, structured errors, workload limits, and service metrics.

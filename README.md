@@ -220,11 +220,13 @@ deployment.
 ## Verify
 
 ```powershell
-python -m unittest discover -s tests -v
+python -m coverage run -m unittest discover -s tests -v
+python -m coverage report
 python -m scripts.verify_runtime
 python -m ruff format --check .
 python -m ruff check .
 python -m mypy
+python -m pip check
 ```
 
 Use the recognizer only with CAPTCHA images and systems you own or are authorized to test.

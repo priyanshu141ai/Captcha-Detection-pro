@@ -63,8 +63,11 @@ python -m compileall -q app.py train.py src tests scripts
 python -m ruff format --check .
 python -m ruff check .
 python -m mypy
-python -m unittest discover -s tests -v
+python -m coverage erase
+python -m coverage run -m unittest discover -s tests -v
+python -m coverage report
 python -m scripts.verify_runtime
+python -m pip check
 docker compose config
 ```
 

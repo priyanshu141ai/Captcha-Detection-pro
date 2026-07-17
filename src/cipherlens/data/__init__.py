@@ -24,6 +24,7 @@ from cipherlens.data.audit import (
     audit_dataset,
     write_dataset_audit,
 )
+
 PREPROCESSING_VERSION = "1.0"
 NORMALIZATION_MEAN = 0.5
 NORMALIZATION_STD = 0.5
@@ -59,6 +60,8 @@ def load_samples(labels_path: Path, images_dir: Path) -> list[CaptchaSample]:
         if len(parts) != 2:
             raise ValueError(f"Invalid label row at line {line_number}: {raw_line!r}")
         filename, label = parts
+        if len(label) != 6:
+            raise ValueError(f"Invalid label length at line {line_number}: expected 6 characters.")
         image_path = images_dir / filename
         if not image_path.is_file():
             raise FileNotFoundError(f"Image listed in labels file does not exist: {image_path}")
@@ -167,11 +170,11 @@ __all__ = [
     "AuditedSample",
     "CaptchaDataset",
     "CaptchaSample",
-    "ImagePreprocessingConfig",
-    "TextEncoder",
     "DatasetAuditResult",
     "DuplicateFinding",
+    "ImagePreprocessingConfig",
     "ManifestEntry",
+    "TextEncoder",
     "audit_dataset",
     "collate_captchas",
     "coverage_aware_split",

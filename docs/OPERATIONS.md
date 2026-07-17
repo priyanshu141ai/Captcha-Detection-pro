@@ -149,8 +149,11 @@ manual review. Training and tuning must not consume manifest rows marked
 .\.venv\Scripts\python.exe -m ruff format --check .
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m mypy
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m coverage erase
+.\.venv\Scripts\python.exe -m coverage run -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m coverage report
 .\.venv\Scripts\python.exe -m scripts.verify_runtime
+.\.venv\Scripts\python.exe -m pip check
 ```
 
 Container validation:
@@ -164,16 +167,18 @@ docker build --tag cipherlens:release .
 
 `.github/workflows/ci.yml` runs on pushes to `main` and pull requests. It:
 
-1. installs the project and development quality tools;
-2. checks formatting, linting, and practical typing;
-3. compiles Python sources;
-4. runs unit and integration tests;
-5. loads the production checkpoint and verifies batch-0 and batch-1 predictions;
-6. builds the production Docker image.
+1. installs the project and verifies its dependency graph;
+2. checks formatting, linting, practical typing, and source compilation;
+3. runs generated-fixture unit, API integration, and application tests separately;
+4. enforces at least 85% branch coverage across `cipherlens`;
+5. when approved artifacts are present, verifies batch-0 and batch-1 predictions;
+6. validates Compose and builds the production Docker image.
 
 CI uses least-privilege repository permissions, cancels superseded runs, and
-applies job timeouts. Dependabot checks Python, GitHub Actions, and Docker base
-image updates weekly.
+applies job timeouts. Third-party Actions are pinned to reviewed commit SHAs;
+Dependabot checks Python, GitHub Actions, and Docker base image updates weekly.
+The required coverage gate does not depend on the full dataset or approved
+checkpoint; their separate compatibility smoke skips cleanly when absent.
 
 ## Model promotion
 

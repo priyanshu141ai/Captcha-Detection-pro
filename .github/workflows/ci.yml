@@ -17,13 +17,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
           cache: pip
       - name: Install project and development dependencies
         run: python -m pip install --editable ".[dev]"
+      - name: Verify installed dependencies
+        run: python -m pip check
       - name: Check formatting
         run: python -m ruff format --check .
       - name: Lint Python sources
@@ -32,16 +34,35 @@ jobs:
         run: python -m mypy
       - name: Compile Python sources
         run: python -m compileall -q app.py train.py src tests scripts
-      - name: Run unit and integration tests
-        run: python -m unittest discover -s tests -v
-      - name: Run checkpoint smoke test
-        run: python -m scripts.verify_runtime
+      - name: Reset coverage data
+        run: python -m coverage erase
+      - name: Run generated-fixture unit tests
+        run: python -m coverage run --parallel-mode -m unittest discover -s tests/unit -t . -v
+      - name: Run API integration tests
+        run: python -m coverage run --parallel-mode -m unittest discover -s tests/integration -t . -v
+      - name: Run generated-fixture application tests
+        run: >-
+          python -m coverage run --parallel-mode -m unittest
+          tests.test_app tests.test_training tests.test_validation -v
+      - name: Enforce branch coverage floor
+        run: python -m coverage combine && python -m coverage report
+      - name: Run approved-artifact compatibility smoke when available
+        shell: bash
+        run: |
+          if [[ -f models/captcha_crnn.pt && -d data/batch_0 && -d data/batch_1 ]]; then
+            python -m unittest discover -s tests/compatibility -t . -v
+            python -m scripts.verify_runtime
+          else
+            echo "Approved compatibility artifacts are unavailable; fixture-only checks passed."
+          fi
 
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
       - name: Build production image
         run: docker build --tag cipherlens:ci .
