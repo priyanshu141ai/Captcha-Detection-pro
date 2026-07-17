@@ -72,6 +72,9 @@ class CaptchaRecognizer:
         torch.set_num_threads(configured_threads)
 
         checkpoint = _load_checkpoint(Path(checkpoint_path), self.device)
+        self.checkpoint_version = checkpoint.get("checkpoint_version")
+        raw_metadata = checkpoint.get("metadata")
+        self.metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
         try:
             self.config = ModelConfig(**checkpoint.get("model_config", {}))
             self.codec = CaptchaCodec(checkpoint["charset"])

@@ -34,6 +34,20 @@ training:
   mlflow_experiment: CipherLens
   mlflow_run_name:
 
+evaluation:
+  split_manifest_path: artifacts/split_manifest.csv
+  output_path: reports/evaluation
+  figures_path: reports/figures
+  model_card_path: docs/model-card.md
+  split: validation
+  batch_size: 32
+  device: cpu
+  torch_threads: 2
+  ece_bins: 10
+  latency_warmup: 5
+  latency_runs: 50
+  temperature_scaling: false
+
 dataset:
   name: cipherlens-repository-dataset
   expected_width: 151

@@ -58,6 +58,22 @@ class TrainingSettings:
 
 
 @dataclass(frozen=True)
+class EvaluationSettings:
+    split_manifest_path: Path = Path("artifacts/split_manifest.csv")
+    output_path: Path = Path("reports/evaluation")
+    figures_path: Path = Path("reports/figures")
+    model_card_path: Path = Path("docs/model-card.md")
+    split: str = "validation"
+    batch_size: int = 32
+    device: str = "cpu"
+    torch_threads: int = 2
+    ece_bins: int = 10
+    latency_warmup: int = 5
+    latency_runs: int = 50
+    temperature_scaling: bool = False
+
+
+@dataclass(frozen=True)
 class DatasetSourceSettings:
     name: str
     labels_path: Path
@@ -87,6 +103,7 @@ class DatasetSettings:
 class CipherLensSettings:
     runtime: RuntimeSettings
     training: TrainingSettings
+    evaluation: EvaluationSettings
     dataset: DatasetSettings
     source: Path | None = None
 
@@ -127,6 +144,20 @@ _TRAINING_KEYS = {
     "mlflow_tracking_uri",
     "mlflow_experiment",
     "mlflow_run_name",
+}
+_EVALUATION_KEYS = {
+    "split_manifest_path",
+    "output_path",
+    "figures_path",
+    "model_card_path",
+    "split",
+    "batch_size",
+    "device",
+    "torch_threads",
+    "ece_bins",
+    "latency_warmup",
+    "latency_runs",
+    "temperature_scaling",
 }
 _DATASET_KEYS = {
     "name",
@@ -452,6 +483,68 @@ def _training_settings(values: Mapping[str, object]) -> TrainingSettings:
     )
 
 
+def _evaluation_settings(values: Mapping[str, object]) -> EvaluationSettings:
+    defaults = EvaluationSettings()
+    split = _non_empty_string(values.get("split", defaults.split), "evaluation.split").lower()
+    if split not in {"validation", "external_test"}:
+        raise ConfigurationError("evaluation.split must be 'validation' or 'external_test'.")
+    device = _non_empty_string(values.get("device", defaults.device), "evaluation.device").lower()
+    if device not in {"cpu", "cuda"}:
+        raise ConfigurationError("evaluation.device must be 'cpu' or 'cuda'.")
+    return EvaluationSettings(
+        split_manifest_path=Path(
+            _non_empty_string(
+                values.get("split_manifest_path", defaults.split_manifest_path),
+                "evaluation.split_manifest_path",
+            )
+        ),
+        output_path=Path(
+            _non_empty_string(
+                values.get("output_path", defaults.output_path), "evaluation.output_path"
+            )
+        ),
+        figures_path=Path(
+            _non_empty_string(
+                values.get("figures_path", defaults.figures_path), "evaluation.figures_path"
+            )
+        ),
+        model_card_path=Path(
+            _non_empty_string(
+                values.get("model_card_path", defaults.model_card_path),
+                "evaluation.model_card_path",
+            )
+        ),
+        split=split,
+        batch_size=_integer(
+            values.get("batch_size", defaults.batch_size), "evaluation.batch_size", minimum=1
+        ),
+        device=device,
+        torch_threads=validate_torch_threads(
+            values.get("torch_threads", defaults.torch_threads), "evaluation.torch_threads"
+        ),
+        ece_bins=_integer(
+            values.get("ece_bins", defaults.ece_bins),
+            "evaluation.ece_bins",
+            minimum=2,
+            maximum=100,
+        ),
+        latency_warmup=_integer(
+            values.get("latency_warmup", defaults.latency_warmup),
+            "evaluation.latency_warmup",
+            minimum=0,
+        ),
+        latency_runs=_integer(
+            values.get("latency_runs", defaults.latency_runs),
+            "evaluation.latency_runs",
+            minimum=1,
+        ),
+        temperature_scaling=_boolean(
+            values.get("temperature_scaling", defaults.temperature_scaling),
+            "evaluation.temperature_scaling",
+        ),
+    )
+
+
 def _default_dataset_sources(project_root: Path) -> tuple[DatasetSourceSettings, ...]:
     common = {
         "provenance": (
@@ -612,17 +705,20 @@ def load_settings(
             raise ConfigurationError(f"Could not read configuration file: {source}") from error
         document = _as_mapping(loaded, "root")
 
-    _reject_unknown_keys(document, {"runtime", "training", "dataset"}, "top-level")
+    _reject_unknown_keys(document, {"runtime", "training", "evaluation", "dataset"}, "top-level")
     runtime_values = _as_mapping(document.get("runtime"), "runtime")
     training_values = _as_mapping(document.get("training"), "training")
+    evaluation_values = _as_mapping(document.get("evaluation"), "evaluation")
     dataset_values = _as_mapping(document.get("dataset"), "dataset")
     _reject_unknown_keys(runtime_values, _RUNTIME_KEYS, "runtime")
     _reject_unknown_keys(training_values, _TRAINING_KEYS, "training")
+    _reject_unknown_keys(evaluation_values, _EVALUATION_KEYS, "evaluation")
     _reject_unknown_keys(dataset_values, _DATASET_KEYS, "dataset")
 
     return CipherLensSettings(
         runtime=_runtime_settings(runtime_values, environment, root),
         training=_training_settings(training_values),
+        evaluation=_evaluation_settings(evaluation_values),
         dataset=_dataset_settings(dataset_values, root),
         source=source,
     )

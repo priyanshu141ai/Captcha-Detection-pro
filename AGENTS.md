@@ -24,15 +24,15 @@ Current compatibility entry points:
 - `app.py`: Streamlit UI and direct local inference.
 - `train.py`: training CLI.
 - `src/cipherlens/`: installable package containing configuration, data, model,
-  training, inference, logging, and utility modules.
+  training, evaluation, inference, logging, and utility modules.
 - `src/data.py`, `src/model.py`, `src/inference.py`, and `src/validation.py`:
   backward-compatible imports for existing callers.
 - `scripts/verify_runtime.py`: checkpoint smoke verification.
 - `tests/`: current `unittest` suite.
 
 The installable `src/cipherlens/` package currently contains configuration,
-logging, data, models, training, inference, and utilities. The incremental target
-adds separate `evaluation`, `api`, and `monitoring` packages. Keep the
+logging, data, models, training, evaluation, inference, and utilities. The incremental target
+adds separate `api` and `monitoring` packages. Keep the
 Streamlit frontend separate from the FastAPI service, and keep training code out
 of both runtime entry points. Preserve compatibility wrappers while callers still
 use the current `src.*` imports.

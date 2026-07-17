@@ -1,0 +1,17 @@
+path,source,target,prediction,confidence,edit_distance,wrong_positions
+data/batch_0/captcha_00024.png,batch_0,TG3R68,TG3RB8,0.97802469,1,5
+data/batch_0/captcha_00136.png,batch_0,p3FZWQ,P3FZWQ,0.95891380,1,1
+data/batch_0/captcha_00195.png,batch_0,CG25Xp,CG25XP,0.91179691,1,6
+data/batch_0/captcha_00198.png,batch_0,ABaTFG,AbaTFG,0.90987540,1,2
+data/batch_0/captcha_00290.png,batch_0,3LBpCr,3LBPCr,0.91569642,1,4
+data/batch_0/captcha_00401.png,batch_0,NFpXrR,NFPXrR,0.93133889,1,3
+data/batch_0/captcha_00419.png,batch_0,EMBpHe,EMBPHe,0.94172736,1,4
+data/batch_1/captcha_00577.png,batch_1,3MdYBa,3MLYBa,0.86024539,1,3
+data/batch_1/captcha_00594.png,batch_1,CB8Ya4,cB8Ya4,0.90616241,1,1
+data/batch_1/captcha_00765.png,batch_1,6NabEQ,6NdbEQ,0.80425993,1,3
+data/batch_1/captcha_00769.png,batch_1,eTPNCC,eTpNCc,0.82148814,2,3|6
+data/batch_1/captcha_00790.png,batch_1,RbRLGH,RbRL6H,0.95184222,1,5
+data/batch_1/captcha_00819.png,batch_1,5FKCCC,5FKcCC,0.90560337,1,4
+data/batch_1/captcha_00909.png,batch_1,YC6QQK,Yc6QQK,0.94424881,1,2
+data/batch_1/captcha_00928.png,batch_1,4PeX2C,4PeX2c,0.89259051,1,6
+data/batch_1/captcha_00944.png,batch_1,rEZCTe,rEZcTe,0.90947388,1,4

@@ -163,6 +163,25 @@ accuracy, per-character accuracy, latency, and new-character coverage pass the
 release criteria. Git history should retain the previous checkpoint for
 rollback.
 
+## Evaluation reports
+
+Generate validation diagnostics without modifying the checkpoint:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.evaluate_model
+```
+
+The command verifies manifest hashes and writes CSV/JSON reports, failed
+predictions, a confusion matrix, a reliability diagram, and `docs/model-card.md`.
+Latency is a warmed-up, single-sample model-forward benchmark that excludes image
+decode and preprocessing. Results are provisional when checkpoint split metadata
+does not match the evaluated manifest.
+
+`--split external_test` exits successfully with a clear pending message when no
+authorized external set is configured. `--temperature-scale` fits one scalar on
+validation only; it is diagnostic and must not be presented as independent
+calibration evidence.
+
 ## Rollback
 
 1. Restore the previously approved `models/captcha_crnn.pt` from source control

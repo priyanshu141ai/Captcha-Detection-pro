@@ -1,0 +1,64 @@
+{
+  "calibration": {
+    "calibrated_metrics": null,
+    "calibrated_nll": null,
+    "note": "Temperature scaling was not applied.",
+    "raw_nll": 0.06603468209505081,
+    "temperature": 1.0
+  },
+  "evaluated_at": "2026-07-17T05:26:02.253169+00:00",
+  "evidence": {
+    "dataset_version": "143bbe9d6e498ae523d890f7da88ca35c6e54df33961984a31e21823b03f331f",
+    "external_test_status": "pending",
+    "manifest_sha256": "e678835c75496cb6e2004081b36fa58d6ff9eea925a44aeb7e33e7440834744d",
+    "split": "validation",
+    "split_version": "14486e3152d5e613cd7269ad13d0a9b24878ac9a79597a36b1452580f7f4da16",
+    "status": "provisional_checkpoint_training_split_unverified"
+  },
+  "latency": {
+    "device": "cpu",
+    "mean_ms": 4.223156,
+    "measured_runs": 50,
+    "median_ms": 4.1865000000000006,
+    "p95_ms": 4.6981,
+    "scope": "preprocessed single-sample model forward",
+    "warmup_runs": 5
+  },
+  "metrics": {
+    "character_accuracy": 0.9858333333333333,
+    "character_count": 1200,
+    "character_error_rate": 0.014166666666666666,
+    "exact_accuracy": 0.92,
+    "mean_confidence": 0.9573638878750778,
+    "median_confidence": 0.9743880719894924,
+    "normalized_edit_distance": 0.014166666666666662,
+    "per_position_accuracy": [
+      0.99,
+      0.99,
+      0.98,
+      0.98,
+      0.99,
+      0.985
+    ],
+    "per_position_support": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "sample_count": 200,
+    "sequence_ece": 0.03736388787507808
+  },
+  "model": {
+    "architecture_name": "captcha_crnn_positionwise",
+    "checkpoint_path": "models/captcha_crnn.pt",
+    "checkpoint_sha256": "b366146071bdf91f9acaca6be2d0da8c91a6cf3631bbcf93721584f78714c422",
+    "checkpoint_size_bytes": 4781237,
+    "checkpoint_version": "legacy-unversioned",
+    "model_version": "1.0",
+    "parameter_count": 1190475
+  },
+  "schema_version": "1.0"
+}

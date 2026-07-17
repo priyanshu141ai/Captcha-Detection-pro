@@ -26,6 +26,9 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(
             settings.training.split_manifest_path, Path("artifacts/split_manifest.csv")
         )
+        self.assertEqual(settings.evaluation.split, "validation")
+        self.assertEqual(settings.evaluation.output_path, Path("reports/evaluation"))
+        self.assertFalse(settings.evaluation.temperature_scaling)
         self.assertEqual(len(settings.dataset.sources), 2)
         self.assertEqual(settings.dataset.expected_width, 151)
         self.assertEqual(settings.dataset.label_length, 6)
@@ -126,6 +129,17 @@ class ConfigurationTests(unittest.TestCase):
                 with self.subTest(name=name):
                     config = root / f"{name}.yaml"
                     config.write_text(f"training:\n  {name}: {value}\n", encoding="utf-8")
+                    with self.assertRaises(ConfigurationError):
+                        load_settings(config, project_root=root, environ={})
+
+    def test_evaluation_settings_are_bounded(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cases = {"ece_bins": 1, "latency_runs": 0, "device": "auto", "split": "train"}
+            for name, value in cases.items():
+                with self.subTest(name=name):
+                    config = root / f"evaluation-{name}.yaml"
+                    config.write_text(f"evaluation:\n  {name}: {value}\n", encoding="utf-8")
                     with self.assertRaises(ConfigurationError):
                         load_settings(config, project_root=root, environ={})
 

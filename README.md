@@ -139,6 +139,24 @@ python -m pip install --editable ".[tracking]"
 python train.py --mlflow --mlflow-experiment CipherLens
 ```
 
+## Evaluate
+
+```powershell
+python -m scripts.evaluate_model
+```
+
+Evaluation verifies every image hash against the versioned manifest and writes
+metrics, failures, calibration bins, a confusion matrix, a reliability diagram,
+and [the model card](docs/model-card.md). The current checkpoint lacks enough
+training-split provenance to rule out overlap with the newer manifest, so these
+validation results are provisional. External evaluation remains pending.
+
+Optional temperature scaling is validation-only and does not modify the model:
+
+```powershell
+python -m scripts.evaluate_model --temperature-scale
+```
+
 ## Run the app
 
 ```powershell

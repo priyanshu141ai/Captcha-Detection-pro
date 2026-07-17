@@ -7,6 +7,7 @@ CipherLens is a local CAPTCHA recognition system for fixed-length, six-character
 - a PyTorch training pipeline;
 - a compact convolutional recurrent neural network (CRNN);
 - checkpoint-based inference;
+- versioned evaluation, calibration diagnostics, and static reports;
 - a Streamlit upload and recognition interface;
 - automated regression tests.
 
@@ -30,12 +31,19 @@ Captcha-Detection/
 |-- models/
 |   `-- captcha_crnn.pt          # Trained model checkpoint
 |-- configs/
-|   `-- default.yaml             # Validated application and training defaults
+|   `-- default.yaml             # Runtime, training, evaluation, and dataset defaults
+|-- reports/                     # Versioned evaluation tables and figures
+|-- scripts/
+|   |-- audit_dataset.py         # Dataset validation and manifest generation
+|   |-- evaluate_model.py        # Versioned evaluation and report generation
+|   `-- verify_runtime.py        # Production checkpoint smoke check
 |-- src/
 |   |-- cipherlens/              # Installable application package
 |   |   |-- data/                # Dataset loading, splitting, and preprocessing
+|   |   |-- evaluation/          # Metrics, calibration, benchmarks, and reports
 |   |   |-- inference/           # Checkpoint inference and upload validation
 |   |   |-- models/              # Network, codec, and edit-distance logic
+|   |   |-- training/            # Optimization and checkpoint workflows
 |   |   `-- utils/               # Reproducibility helpers
 |   |-- data.py                  # Legacy compatibility import
 |   |-- inference.py             # Legacy compatibility import
@@ -51,7 +59,7 @@ Captcha-Detection/
 
 ## 3. Runtime requirements
 
-- Python 3.11 or a compatible Python 3 version
+- Python 3.11
 - PyTorch
 - Streamlit
 - Pillow
@@ -405,7 +413,44 @@ reproducibility is promised only with the default `--num-workers 0`.
 MLflow is optional (`pip install -e ".[tracking]"`) and imported only when
 `--mlflow` is enabled. Local JSON/checkpoint logging works without MLflow.
 
-## 9. Checkpoint format
+## 9. Evaluation and error analysis
+
+Run `python -m scripts.evaluate_model` to evaluate a checkpoint against exact
+rows from `artifacts/split_manifest.csv`. Before inference, the evaluator checks
+the dataset version, image path containment, SHA-256 hash, label length, and
+checkpoint vocabulary.
+
+The evaluator reports character and exact-string accuracy, character error rate,
+mean normalized edit distance, per-position accuracy, per-character precision,
+recall and F1, confidence bins, sequence expected calibration error, model size,
+parameter count, and warmed-up single-sample forward latency. It exports:
+
+- `reports/evaluation/model_comparison.csv`;
+- `reports/evaluation/failed_predictions.csv`;
+- `reports/evaluation/evaluation_summary.json`;
+- per-character, per-position, and confidence-distribution CSV files;
+- `reports/figures/confusion_matrix.png`;
+- `reports/figures/reliability_diagram.png`; and
+- `docs/model-card.md`.
+
+The confusion matrix uses raw counts with a disclosed square-root color scale.
+The reliability diagram compares mean sequence confidence with exact-string
+accuracy and displays sample count per confidence bin. Empty bins remain empty;
+missing evidence is never encoded as zero accuracy.
+
+Optional `--temperature-scale` minimizes position-wise cross entropy with one
+positive scalar fitted on validation data only. The raw and scaled NLL/ECE values
+are retained, and the report warns that using the same validation set for fitting
+and reporting is not independent calibration evidence. The production checkpoint
+is never changed.
+
+No external-test source is configured. `--split external_test` therefore reports
+that evaluation is pending instead of creating scores. The approved legacy
+checkpoint also lacks versioned training-split metadata, so current manifest
+validation results are provisional because historical train/evaluation overlap
+cannot be ruled out.
+
+## 10. Checkpoint format
 
 The approved legacy checkpoint remains loadable. New candidate checkpoints use
 schema version 2 while retaining the compatible top-level inference fields:
@@ -437,7 +482,7 @@ Inference and warm-start loading use PyTorch's restricted `weights_only=True`
 mode and validate required checkpoint fields. Checkpoints should still come only
 from trusted build or artifact pipelines.
 
-## 10. Inference API
+## 11. Inference API
 
 `CaptchaRecognizer` provides the reusable Python inference interface.
 
@@ -470,7 +515,7 @@ recognizer = CaptchaRecognizer("models/captcha_crnn.pt", device="cuda")
 
 CUDA inference requires a compatible PyTorch installation and GPU.
 
-## 11. Streamlit application
+## 12. Streamlit application
 
 Start the UI from the project root:
 
@@ -506,7 +551,7 @@ The uploaded image is processed in memory and is not deliberately persisted by t
 Production deployment, CI/CD, health checks, security controls, workload
 tuning, and rollback are documented in [OPERATIONS.md](OPERATIONS.md).
 
-## 12. Automated tests
+## 13. Automated tests
 
 Run the complete test suite:
 
@@ -524,7 +569,7 @@ Current tests verify:
 - Levenshtein-distance behavior;
 - checkpoint loading and known-image inference.
 
-## 13. Common errors
+## 14. Common errors
 
 ### `FileNotFoundError` for a CAPTCHA image
 
@@ -560,7 +605,7 @@ Cause: the new images differ from the training distribution in fonts, noise, col
 
 Resolution: collect labeled examples from the target style, balance all expected characters, retrain, and evaluate on a separate test set.
 
-## 14. Known limitations
+## 15. Known limitations
 
 - Output length is fixed at six characters.
 - Only characters observed during training can be predicted.
@@ -570,7 +615,7 @@ Resolution: collect labeled examples from the target style, balance all expected
 - Accuracy can decrease on unseen fonts, distortion patterns, backgrounds, and noise levels.
 - The current split is suitable for development, not a substitute for an independent test dataset.
 
-## 15. Recommended next improvements
+## 16. Recommended next improvements
 
 1. Collect a larger, balanced dataset containing every expected character.
 2. Add an independent test set from a separate generation process.
@@ -580,6 +625,6 @@ Resolution: collect labeled examples from the target style, balance all expected
 6. Export the model to TorchScript or ONNX for deployment.
 7. Use CTC or an attention decoder if variable-length labels are required.
 
-## 16. Responsible use
+## 17. Responsible use
 
 Use CipherLens only on CAPTCHA images and systems that you own or are explicitly authorized to test. CAPTCHA recognition can affect access-control and abuse-prevention systems, so deployment must follow applicable policies and laws.
