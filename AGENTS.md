@@ -28,6 +28,8 @@ Current compatibility entry points:
 - `src/data.py`, `src/model.py`, `src/inference.py`, and `src/validation.py`:
   backward-compatible imports for existing callers.
 - `scripts/verify_runtime.py`: checkpoint smoke verification.
+- `scripts/train_ctc_experiment.py`: isolated optional Model V2 training.
+- `scripts/compare_models.py`: evidence-aligned model comparison.
 - `tests/`: current `unittest` suite.
 
 The installable `src/cipherlens/` package currently contains configuration,

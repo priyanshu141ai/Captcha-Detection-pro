@@ -11,6 +11,7 @@ with third-party sites or used to bypass access controls.
 - Vocabulary size: `43`
 - Parameters: `1,190,475`
 - Checkpoint size: `4.56 MiB`
+- CPU model tensors: `4.54 MiB`
 
 ## Evaluation evidence
 
@@ -38,8 +39,8 @@ bars show observed accuracy and the lower panel shows sample count per bin.
 ## Runtime
 
 Single-sample `preprocessed single-sample model forward` latency on `cpu`:
-mean `4.223 ms`, median `4.187 ms`,
-p95 `4.698 ms` across `50` measured runs
+mean `4.557 ms`, median `4.486 ms`,
+p95 `5.145 ms` across `50` measured runs
 after `5` warmups. Image decode and preprocessing are excluded.
 
 ## Known limitations
@@ -59,7 +60,8 @@ python -m scripts.evaluate_model
 Artifacts: [comparison](../reports/evaluation/model_comparison.csv),
 [failures](../reports/evaluation/failed_predictions.csv),
 [confusion matrix](../reports/figures/confusion_matrix.png), and
-[reliability diagram](../reports/figures/reliability_diagram.png).
+[reliability diagram](../reports/figures/reliability_diagram.png). See also the
+[model comparison](model-comparison.md).
 
 Generated from dataset version `143bbe9d6e498ae523d890f7da88ca35c6e54df33961984a31e21823b03f331f` and split version
-`14486e3152d5e613cd7269ad13d0a9b24878ac9a79597a36b1452580f7f4da16` at `2026-07-17T05:26:02.253169+00:00`.
+`14486e3152d5e613cd7269ad13d0a9b24878ac9a79597a36b1452580f7f4da16` at `2026-07-17T05:53:28.266351+00:00`.

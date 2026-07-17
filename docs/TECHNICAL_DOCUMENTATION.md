@@ -31,11 +31,15 @@ Captcha-Detection/
 |-- models/
 |   `-- captcha_crnn.pt          # Trained model checkpoint
 |-- configs/
-|   `-- default.yaml             # Runtime, training, evaluation, and dataset defaults
+|   |-- default.yaml             # Runtime, training, evaluation, and dataset defaults
+|   `-- model-registry.yaml      # Comparison inventory and lifecycle status
 |-- reports/                     # Versioned evaluation tables and figures
 |-- scripts/
 |   |-- audit_dataset.py         # Dataset validation and manifest generation
+|   |-- compare_models.py        # Evidence-aligned registered-model comparison
+|   |-- evaluate_ctc_model.py    # Optional Model V2 evaluation
 |   |-- evaluate_model.py        # Versioned evaluation and report generation
+|   |-- train_ctc_experiment.py  # Safe experimental Model V2 training
 |   `-- verify_runtime.py        # Production checkpoint smoke check
 |-- src/
 |   |-- cipherlens/              # Installable application package
@@ -449,6 +453,31 @@ that evaluation is pending instead of creating scores. The approved legacy
 checkpoint also lacks versioned training-split metadata, so current manifest
 validation results are provisional because historical train/evaluation overlap
 cannot be ruled out.
+
+### 9.1 Model comparison and experimental architectures
+
+`configs/model-registry.yaml` is the model inventory source of truth. Run
+`python -m scripts.compare_models` after evaluation. The comparison includes exact
+accuracy, character error rate, latency, checkpoint size, CPU model-tensor bytes,
+sequence ECE, and repeated-run stability. All measured rows must use the same
+dataset version, split version, split role, and sample count. Missing evidence is
+left blank rather than converted to zero.
+
+Model V2 (`captcha_crnn_ctc`) reuses shared image preprocessing and the CNN feature
+extractor, emits width-wise BiLSTM logits, reserves class zero for the CTC blank,
+and collapses blanks and repeated tokens during greedy decoding. It is trained only
+through `python -m scripts.train_ctc_experiment`; its default candidate path cannot
+overwrite Model V1. `python -m scripts.evaluate_ctc_model` produces a compatible
+summary only when a candidate exists.
+
+Promotion review requires versioned external-test evidence, at least two training
+runs, exact accuracy no worse than V1, CER and ECE no worse than V1, median latency
+within 10%, CPU model tensors within 25%, and explicit approval. Model V1 remains
+the default when no challenger passes.
+
+Model V3 transformer OCR is deferred. The current 1,000-image dataset, incomplete
+provenance, missing external test set, and overfitting risk do not justify adding
+transformer dependencies or compute during this milestone.
 
 ## 10. Checkpoint format
 

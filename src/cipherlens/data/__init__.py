@@ -7,6 +7,7 @@ from collections import Counter
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from typing import Protocol
 
 import numpy as np
 import torch
@@ -23,8 +24,6 @@ from cipherlens.data.audit import (
     audit_dataset,
     write_dataset_audit,
 )
-from cipherlens.models import CaptchaCodec, ModelConfig
-
 PREPROCESSING_VERSION = "1.0"
 NORMALIZATION_MEAN = 0.5
 NORMALIZATION_STD = 0.5
@@ -34,6 +33,18 @@ NORMALIZATION_STD = 0.5
 class CaptchaSample:
     path: Path
     label: str
+
+
+class ImagePreprocessingConfig(Protocol):
+    @property
+    def image_height(self) -> int: ...
+
+    @property
+    def image_width(self) -> int: ...
+
+
+class TextEncoder(Protocol):
+    def encode(self, text: str) -> Tensor: ...
 
 
 def load_samples(labels_path: Path, images_dir: Path) -> list[CaptchaSample]:
@@ -89,7 +100,7 @@ def coverage_aware_split(
 
 def prepare_image(
     image: Image.Image,
-    config: ModelConfig,
+    config: ImagePreprocessingConfig,
     augment: bool = False,
 ) -> Tensor:
     image = image.convert("RGB")
@@ -117,8 +128,8 @@ class CaptchaDataset(Dataset[tuple[Tensor, Tensor, str]]):
     def __init__(
         self,
         samples: list[CaptchaSample],
-        codec: CaptchaCodec,
-        config: ModelConfig,
+        codec: TextEncoder,
+        config: ImagePreprocessingConfig,
         augment: bool,
         cache_images: bool = True,
     ) -> None:
@@ -156,6 +167,8 @@ __all__ = [
     "AuditedSample",
     "CaptchaDataset",
     "CaptchaSample",
+    "ImagePreprocessingConfig",
+    "TextEncoder",
     "DatasetAuditResult",
     "DuplicateFinding",
     "ManifestEntry",

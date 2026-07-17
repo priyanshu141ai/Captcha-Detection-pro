@@ -157,6 +157,22 @@ Optional temperature scaling is validation-only and does not modify the model:
 python -m scripts.evaluate_model --temperature-scale
 ```
 
+## Model experiments
+
+Model V1 remains the production baseline. Model V2 is an isolated CRNN-CTC
+experiment with safe candidate defaults:
+
+```powershell
+python -m scripts.train_ctc_experiment
+python -m scripts.evaluate_ctc_model
+python -m scripts.compare_models
+```
+
+No V2 candidate was trained for the committed comparison, so its metrics remain
+blank. Model V3 transformer work is deferred because 1,000 images and no external
+test set do not justify the dependency, compute, and overfitting risk. See
+[the comparison decision](docs/model-comparison.md).
+
 ## Run the app
 
 ```powershell

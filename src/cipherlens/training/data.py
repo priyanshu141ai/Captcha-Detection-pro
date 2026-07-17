@@ -16,10 +16,12 @@ from torch.utils.data import DataLoader
 from cipherlens.data import (
     CaptchaDataset,
     CaptchaSample,
+    ImagePreprocessingConfig,
+    TextEncoder,
     collate_captchas,
     coverage_aware_split,
 )
-from cipherlens.models import CaptchaCodec, ModelConfig
+from cipherlens.models import CaptchaCodec
 from cipherlens.utils import make_torch_generator, seed_worker
 
 
@@ -173,8 +175,8 @@ def load_training_split(
 
 def build_loaders(
     split: TrainingSplit,
-    codec: CaptchaCodec,
-    model_config: ModelConfig,
+    codec: TextEncoder,
+    model_config: ImagePreprocessingConfig,
     *,
     batch_size: int,
     num_workers: int,

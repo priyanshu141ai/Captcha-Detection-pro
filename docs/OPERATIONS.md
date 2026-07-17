@@ -182,6 +182,26 @@ authorized external set is configured. `--temperature-scale` fits one scalar on
 validation only; it is diagnostic and must not be presented as independent
 calibration evidence.
 
+## Experimental model workflow
+
+Model V2 is isolated from the production checkpoint:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.train_ctc_experiment `
+  --output models/captcha_crnn_ctc_candidate.pt
+.\.venv\Scripts\python.exe -m scripts.evaluate_ctc_model
+.\.venv\Scripts\python.exe -m scripts.compare_models
+```
+
+The training command refuses to overwrite `models/captcha_crnn.pt`. Candidate and
+history artifacts remain ignored until explicitly reviewed. A missing candidate
+or external split is reported as pending and does not create zero-valued metrics.
+
+Promotion is never automatic. The registry requires aligned versioned external
+evidence, at least two training runs, accuracy/CER/ECE gates, bounded latency and
+CPU model-tensor memory, and explicit approval. Model V1 remains the rollback-safe
+default until a challenger satisfies every gate.
+
 ## Rollback
 
 1. Restore the previously approved `models/captcha_crnn.pt` from source control

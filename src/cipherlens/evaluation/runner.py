@@ -73,6 +73,7 @@ class EvaluationResult:
     checkpoint_sha256: str
     checkpoint_size_bytes: int
     parameter_count: int
+    cpu_model_tensor_bytes: int
     dataset_version: str
     split_version: str
     manifest_sha256: str
@@ -377,6 +378,10 @@ def evaluate_checkpoint(
         _sha256(checkpoint_path),
         checkpoint_path.stat().st_size,
         sum(parameter.numel() for parameter in recognizer.model.parameters()),
+        sum(
+            tensor.numel() * tensor.element_size()
+            for tensor in (*recognizer.model.parameters(), *recognizer.model.buffers())
+        ),
         selection.dataset_version,
         selection.split_version,
         selection.manifest_sha256,

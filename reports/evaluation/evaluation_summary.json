@@ -6,7 +6,7 @@
     "raw_nll": 0.06603468209505081,
     "temperature": 1.0
   },
-  "evaluated_at": "2026-07-17T05:26:02.253169+00:00",
+  "evaluated_at": "2026-07-17T05:53:28.266351+00:00",
   "evidence": {
     "dataset_version": "143bbe9d6e498ae523d890f7da88ca35c6e54df33961984a31e21823b03f331f",
     "external_test_status": "pending",
@@ -17,10 +17,10 @@
   },
   "latency": {
     "device": "cpu",
-    "mean_ms": 4.223156,
+    "mean_ms": 4.557478,
     "measured_runs": 50,
-    "median_ms": 4.1865000000000006,
-    "p95_ms": 4.6981,
+    "median_ms": 4.4859,
+    "p95_ms": 5.1452,
     "scope": "preprocessed single-sample model forward",
     "warmup_runs": 5
   },
@@ -57,6 +57,7 @@
     "checkpoint_sha256": "b366146071bdf91f9acaca6be2d0da8c91a6cf3631bbcf93721584f78714c422",
     "checkpoint_size_bytes": 4781237,
     "checkpoint_version": "legacy-unversioned",
+    "cpu_model_tensor_bytes": 4765772,
     "model_version": "1.0",
     "parameter_count": 1190475
   },

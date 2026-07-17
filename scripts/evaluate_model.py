@@ -14,6 +14,11 @@ from cipherlens.evaluation import (
     evaluate_checkpoint,
     write_evaluation_reports,
 )
+from cipherlens.evaluation.comparison import (
+    build_comparison_rows,
+    load_model_registry,
+    write_comparison,
+)
 from cipherlens.logging import configure_logging
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,6 +109,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     paths = EvaluationReportPaths.from_directories(output, figures, model_card)
     write_evaluation_reports(result, paths)
+    default_output = (ROOT / "reports/evaluation").resolve()
+    if output == default_output:
+        entries = load_model_registry(ROOT / "configs/model-registry.yaml", project_root=ROOT)
+        write_comparison(
+            build_comparison_rows(entries),
+            csv_path=paths.model_comparison,
+            document_path=ROOT / "docs/model-comparison.md",
+        )
     print(
         json.dumps(
             {

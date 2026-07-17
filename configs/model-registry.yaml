@@ -1,0 +1,32 @@
+schema_version: 1
+models:
+  - id: v1-positionwise
+    architecture: captcha_crnn_positionwise
+    version: "1.0"
+    lifecycle_status: production_baseline
+    checkpoint: models/captcha_crnn.pt
+    evaluation_summary: reports/evaluation/evaluation_summary.json
+    training_histories: []
+    notes: >-
+      Only measured baseline; legacy checkpoint training-split provenance is incomplete.
+
+  - id: v2-ctc
+    architecture: captcha_crnn_ctc
+    version: 2.0-experimental
+    lifecycle_status: experimental_not_trained
+    checkpoint: models/captcha_crnn_ctc_candidate.pt
+    evaluation_summary: reports/evaluation/v2/evaluation_summary.json
+    training_histories:
+      - artifacts/ctc-training-history.json
+    notes: >-
+      Architecture and safe training path exist; candidate training and evaluation are pending.
+
+  - id: v3-transformer
+    architecture: transformer_ocr
+    version: deferred
+    lifecycle_status: deferred
+    checkpoint:
+    evaluation_summary:
+    training_histories: []
+    notes: >-
+      Deferred because 1,000 images and no external test set do not justify added complexity.

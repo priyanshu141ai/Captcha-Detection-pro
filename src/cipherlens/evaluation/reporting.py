@@ -229,6 +229,7 @@ def _summary_payload(result: EvaluationResult) -> dict[str, object]:
             "checkpoint_sha256": result.checkpoint_sha256,
             "checkpoint_size_bytes": result.checkpoint_size_bytes,
             "parameter_count": result.parameter_count,
+            "cpu_model_tensor_bytes": result.cpu_model_tensor_bytes,
         },
         "evidence": {
             "dataset_version": result.dataset_version,
@@ -291,6 +292,7 @@ with third-party sites or used to bypass access controls.
 - Vocabulary size: `{len(result.charset)}`
 - Parameters: `{result.parameter_count:,}`
 - Checkpoint size: `{result.checkpoint_size_bytes / (1024 * 1024):.2f} MiB`
+- CPU model tensors: `{result.cpu_model_tensor_bytes / (1024 * 1024):.2f} MiB`
 
 ## Evaluation evidence
 
@@ -339,7 +341,8 @@ python -m scripts.evaluate_model
 Artifacts: [comparison](../reports/evaluation/model_comparison.csv),
 [failures](../reports/evaluation/failed_predictions.csv),
 [confusion matrix](../reports/figures/confusion_matrix.png), and
-[reliability diagram](../reports/figures/reliability_diagram.png).
+[reliability diagram](../reports/figures/reliability_diagram.png). See also the
+[model comparison](model-comparison.md).
 
 Generated from dataset version `{result.dataset_version}` and split version
 `{result.split_version}` at `{result.evaluated_at}`.
@@ -373,6 +376,7 @@ def write_evaluation_reports(
         "latency_p95_ms": _rounded(result.latency.p95_ms),
         "checkpoint_size_bytes": result.checkpoint_size_bytes,
         "parameter_count": result.parameter_count,
+        "cpu_model_tensor_bytes": result.cpu_model_tensor_bytes,
         "evidence_status": result.evidence_status,
         "external_test_status": result.external_test_status,
     }
