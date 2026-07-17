@@ -116,6 +116,18 @@ Consequences:
 - adding new character classes requires retraining;
 - checkpoint and classifier dimensions always remain consistent.
 
+### 4.4 Versioned audit and split manifest
+
+`python -m scripts.audit_dataset` validates both configured sources and writes
+the dataset report, frequency table, duplicate report, and split manifest.
+Dataset identity includes labels, image SHA-256 values, dimensions, and validation
+state; split identity also includes the seed, policy, related groups, and rows.
+
+Exact duplicates, pHash near-duplicates, and repeated labels stay in one group.
+External-test sources remain isolated; overlapping development rows are excluded.
+No independent external source is currently configured, so external evaluation
+is pending.
+
 ## 5. Processing pipeline
 
 ```mermaid

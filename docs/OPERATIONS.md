@@ -98,6 +98,17 @@ Runtime environment variables override `configs/default.yaml`.
 
 ## Test and release commands
 
+Before candidate training, regenerate and review the dataset identity:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.audit_dataset
+git diff -- artifacts docs/dataset-card.md
+```
+
+The audit never deletes data. A nonzero exit means validation errors require
+manual review. Training and tuning must not consume manifest rows marked
+`external_test`.
+
 ```powershell
 .\.venv\Scripts\python.exe -m compileall -q app.py train.py src tests scripts
 .\.venv\Scripts\python.exe -m ruff format --check .

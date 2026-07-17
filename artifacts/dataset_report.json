@@ -1,0 +1,156 @@
+{
+  "artifacts": {
+    "character_frequency": "artifacts/character_frequency.csv",
+    "dataset_card": "docs/dataset-card.md",
+    "dataset_report": "artifacts/dataset_report.json",
+    "duplicate_report": "artifacts/duplicate_report.csv",
+    "split_manifest": "artifacts/split_manifest.csv"
+  },
+  "dataset_name": "cipherlens-repository-dataset",
+  "dataset_version": "143bbe9d6e498ae523d890f7da88ca35c6e54df33961984a31e21823b03f331f",
+  "duplicates": {
+    "cross_split_leakage": 0,
+    "minimum_non_exact_perceptual_distance": 8,
+    "note": "Perceptual hashing is heuristic and cannot prove samples are unrelated.",
+    "relation_counts": {
+      "duplicate_label": 0,
+      "exact_hash": 0,
+      "near_duplicate": 0
+    }
+  },
+  "policy": {
+    "expected_charset": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+    "expected_dimensions": [
+      151,
+      41
+    ],
+    "label_length": 6,
+    "perceptual_hash": "64-bit DCT pHash",
+    "perceptual_hash_distance": 4,
+    "rare_character_threshold": 5,
+    "related_grouping": [
+      "exact_hash",
+      "near_duplicate",
+      "duplicate_label"
+    ],
+    "split_seed": 42,
+    "validation_fraction": 0.2
+  },
+  "schema_version": "1.0",
+  "sources": [
+    {
+      "authorization": "Supplied by the repository owner for authorized educational use; independent license evidence is pending.",
+      "decoded_images": 500,
+      "images_path": "data/batch_0",
+      "label_rows": 500,
+      "labels_path": "labels.txt",
+      "labels_sha256": "dec9c3b4893a85f3bb05f55990b6117413411c221ab672beccb1530243129b2e",
+      "name": "batch_0",
+      "provenance": "Repository-tracked CAPTCHA-style images; exact generation process is not documented.",
+      "role": "development",
+      "valid_samples": 500
+    },
+    {
+      "authorization": "Supplied by the repository owner for authorized educational use; independent license evidence is pending.",
+      "decoded_images": 500,
+      "images_path": "data/batch_1",
+      "label_rows": 500,
+      "labels_path": "requirements2.txt",
+      "labels_sha256": "d0a300951019b091dff14c9aac783ea9f45ae74911e6fcb378af70ca0e01fe29",
+      "name": "batch_1",
+      "provenance": "Repository-tracked CAPTCHA-style images; exact generation process is not documented.",
+      "role": "development",
+      "valid_samples": 500
+    }
+  ],
+  "split_version": "14486e3152d5e613cd7269ad13d0a9b24878ac9a79597a36b1452580f7f4da16",
+  "splits": {
+    "calibration": {
+      "note": "No calibration split is created from the current validation evidence.",
+      "samples": 0,
+      "status": "not_configured"
+    },
+    "excluded": {
+      "observed_characters": 0,
+      "samples": 0,
+      "sources": {}
+    },
+    "external_test": {
+      "observed_characters": 0,
+      "samples": 0,
+      "sources": {}
+    },
+    "external_test_status": "pending",
+    "train": {
+      "observed_characters": 43,
+      "samples": 800,
+      "sources": {
+        "batch_0": 400,
+        "batch_1": 400
+      }
+    },
+    "validation": {
+      "observed_characters": 35,
+      "samples": 200,
+      "sources": {
+        "batch_0": 100,
+        "batch_1": 100
+      }
+    }
+  },
+  "summary": {
+    "character_occurrences": 6000,
+    "decoded_images": 1000,
+    "invalid_or_missing_samples": 0,
+    "label_rows": 1000,
+    "observed_characters": 43,
+    "rare_characters": [
+      "D",
+      "f",
+      "k",
+      "l",
+      "t",
+      "w",
+      "x",
+      "y",
+      "z"
+    ],
+    "unseen_characters": [
+      "0",
+      "1",
+      "9",
+      "I",
+      "J",
+      "O",
+      "U",
+      "V",
+      "g",
+      "h",
+      "i",
+      "j",
+      "m",
+      "n",
+      "o",
+      "q",
+      "s",
+      "u",
+      "v"
+    ],
+    "unseen_in_validation": [
+      "D",
+      "k",
+      "l",
+      "t",
+      "w",
+      "x",
+      "y",
+      "z"
+    ],
+    "valid_samples": 1000
+  },
+  "validation": {
+    "error_count": 0,
+    "issue_counts": {},
+    "issues": []
+  }
+}

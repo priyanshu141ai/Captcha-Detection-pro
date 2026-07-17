@@ -23,6 +23,9 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(settings.runtime.max_upload_bytes, 10 * 1024 * 1024)
         self.assertEqual(settings.training.seed, 42)
         self.assertEqual(settings.training.output_path, Path("models/captcha_crnn.pt"))
+        self.assertEqual(len(settings.dataset.sources), 2)
+        self.assertEqual(settings.dataset.expected_width, 151)
+        self.assertEqual(settings.dataset.label_length, 6)
 
     def test_environment_overrides_are_validated_and_paths_resolve_from_root(self) -> None:
         settings = load_project_settings(
@@ -94,6 +97,23 @@ class ConfigurationTests(unittest.TestCase):
                     )
                     with self.assertRaises(ConfigurationError):
                         load_settings(config, project_root=root, environ={})
+
+    def test_dataset_sources_require_unique_names_and_a_development_role(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "dataset.yaml"
+            config.write_text(
+                "dataset:\n"
+                "  sources:\n"
+                "    - name: external\n"
+                "      labels_path: external.txt\n"
+                "      images_path: images\n"
+                "      role: external_test\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ConfigurationError, "development source"):
+                load_settings(config, project_root=root, environ={})
 
 
 class StructuredLoggingTests(unittest.TestCase):

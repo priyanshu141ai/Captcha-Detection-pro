@@ -25,7 +25,11 @@ dist/
 .docker-config/
 
 # Generated training, evaluation, and model artifacts
-artifacts/
+artifacts/*
+!artifacts/character_frequency.csv
+!artifacts/dataset_report.json
+!artifacts/duplicate_report.csv
+!artifacts/split_manifest.csv
 reports/evaluation/
 reports/figures/
 training_history.json

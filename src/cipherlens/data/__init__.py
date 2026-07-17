@@ -14,6 +14,15 @@ from PIL import Image, ImageEnhance, ImageFilter
 from torch import Tensor
 from torch.utils.data import Dataset
 
+from cipherlens.data.audit import (
+    AuditedSample,
+    AuditIssue,
+    DatasetAuditResult,
+    DuplicateFinding,
+    ManifestEntry,
+    audit_dataset,
+    write_dataset_audit,
+)
 from cipherlens.models import CaptchaCodec, ModelConfig
 
 
@@ -96,9 +105,7 @@ def prepare_image(
     array = np.asarray(image, dtype=np.float32) / 255.0
     tensor = torch.from_numpy(array).permute(2, 0, 1)
     if augment and random.random() < 0.35:
-        tensor = (tensor + torch.randn_like(tensor) * random.uniform(0.005, 0.025)).clamp(
-            0.0, 1.0
-        )
+        tensor = (tensor + torch.randn_like(tensor) * random.uniform(0.005, 0.025)).clamp(0.0, 1.0)
     return (tensor - 0.5) / 0.5
 
 
@@ -133,16 +140,23 @@ class CaptchaDataset(Dataset[tuple[Tensor, Tensor, str]]):
 def collate_captchas(
     batch: list[tuple[Tensor, Tensor, str]],
 ) -> tuple[Tensor, Tensor, list[str]]:
-    images, encoded, labels = zip(*batch)
+    images, encoded, labels = zip(*batch, strict=True)
     return torch.stack(images), torch.stack(encoded), list(labels)
 
 
 __all__ = [
+    "AuditIssue",
+    "AuditedSample",
     "CaptchaDataset",
     "CaptchaSample",
+    "DatasetAuditResult",
+    "DuplicateFinding",
+    "ManifestEntry",
+    "audit_dataset",
     "collate_captchas",
     "coverage_aware_split",
     "load_samples",
     "observed_charset",
     "prepare_image",
+    "write_dataset_audit",
 ]

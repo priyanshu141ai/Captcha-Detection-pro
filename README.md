@@ -73,6 +73,19 @@ override the YAML file:
 Invalid values fail at startup with a field-specific message. Copy
 `.env.example` to `.env` for local Compose overrides; never commit `.env`.
 
+## Dataset audit
+
+```powershell
+python -m scripts.audit_dataset
+```
+
+This non-destructive command validates labels, vocabulary, image decoding and
+dimensions; groups exact hashes, perceptual near-duplicates, and repeated labels;
+then writes `artifacts/dataset_report.json`, three CSV reports, and
+[the dataset card](docs/dataset-card.md). The current version has 1,000 valid
+samples, preserves the seed-42 800/200 development split, and has no configured
+external test set, so external evaluation remains pending.
+
 ## Train
 
 Training must write to a candidate path so the approved checkpoint is not

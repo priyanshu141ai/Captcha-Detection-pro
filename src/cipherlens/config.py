@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+import string
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -46,9 +47,36 @@ class TrainingSettings:
 
 
 @dataclass(frozen=True)
+class DatasetSourceSettings:
+    name: str
+    labels_path: Path
+    images_path: Path
+    role: str = "development"
+    provenance: str = "Not documented"
+    authorization: str = "Maintainer confirmation pending"
+
+
+@dataclass(frozen=True)
+class DatasetSettings:
+    name: str = "cipherlens-repository-dataset"
+    sources: tuple[DatasetSourceSettings, ...] = ()
+    expected_width: int = 151
+    expected_height: int = 41
+    label_length: int = 6
+    expected_charset: str = string.digits + string.ascii_uppercase + string.ascii_lowercase
+    rare_character_threshold: int = 5
+    perceptual_hash_distance: int = 4
+    validation_fraction: float = 0.2
+    split_seed: int = 42
+    artifacts_path: Path = Path("artifacts")
+    dataset_card_path: Path = Path("docs/dataset-card.md")
+
+
+@dataclass(frozen=True)
 class CipherLensSettings:
     runtime: RuntimeSettings
     training: TrainingSettings
+    dataset: DatasetSettings
     source: Path | None = None
 
 
@@ -77,6 +105,28 @@ _TRAINING_KEYS = {
     "torch_threads",
     "cache_images",
     "deterministic",
+}
+_DATASET_KEYS = {
+    "name",
+    "sources",
+    "expected_width",
+    "expected_height",
+    "label_length",
+    "expected_charset",
+    "rare_character_threshold",
+    "perceptual_hash_distance",
+    "validation_fraction",
+    "split_seed",
+    "artifacts_path",
+    "dataset_card_path",
+}
+_DATASET_SOURCE_KEYS = {
+    "name",
+    "labels_path",
+    "images_path",
+    "role",
+    "provenance",
+    "authorization",
 }
 _ENVIRONMENT_KEYS = {
     "checkpoint_path": "CIPHERLENS_CHECKPOINT",
@@ -170,6 +220,13 @@ def _boolean(value: object, name: str) -> bool:
         if normalized in {"0", "false", "no", "off"}:
             return False
     raise ConfigurationError(f"{name} must be a boolean.")
+
+
+def _resolved_path(value: object, name: str, project_root: Path) -> Path:
+    path = Path(_non_empty_string(value, name)).expanduser()
+    if not path.is_absolute():
+        path = project_root / path
+    return path.resolve()
 
 
 def validate_torch_threads(value: object, name: str = "torch_threads") -> int:
@@ -309,6 +366,141 @@ def _training_settings(values: Mapping[str, object]) -> TrainingSettings:
     )
 
 
+def _default_dataset_sources(project_root: Path) -> tuple[DatasetSourceSettings, ...]:
+    common = {
+        "provenance": (
+            "Repository-tracked CAPTCHA-style images; exact generation process is not documented."
+        ),
+        "authorization": (
+            "Supplied by the repository owner for authorized educational use; "
+            "independent license evidence is pending."
+        ),
+    }
+    return (
+        DatasetSourceSettings(
+            name="batch_0",
+            labels_path=(project_root / "labels.txt").resolve(),
+            images_path=(project_root / "data/batch_0").resolve(),
+            **common,
+        ),
+        DatasetSourceSettings(
+            name="batch_1",
+            labels_path=(project_root / "requirements2.txt").resolve(),
+            images_path=(project_root / "data/batch_1").resolve(),
+            **common,
+        ),
+    )
+
+
+def _dataset_settings(values: Mapping[str, object], project_root: Path) -> DatasetSettings:
+    defaults = DatasetSettings()
+    raw_sources = values.get("sources")
+    if raw_sources is None:
+        sources = _default_dataset_sources(project_root)
+    else:
+        if isinstance(raw_sources, (str, bytes)) or not isinstance(raw_sources, Sequence):
+            raise ConfigurationError("dataset.sources must be a list of mappings.")
+        parsed_sources: list[DatasetSourceSettings] = []
+        for index, raw_source in enumerate(raw_sources):
+            source_name = f"dataset.sources[{index}]"
+            source = _as_mapping(raw_source, source_name)
+            _reject_unknown_keys(source, _DATASET_SOURCE_KEYS, source_name)
+            role = _non_empty_string(source.get("role", "development"), f"{source_name}.role")
+            if role not in {"development", "external_test"}:
+                raise ConfigurationError(
+                    f"{source_name}.role must be 'development' or 'external_test'."
+                )
+            parsed_sources.append(
+                DatasetSourceSettings(
+                    name=_non_empty_string(source.get("name"), f"{source_name}.name"),
+                    labels_path=_resolved_path(
+                        source.get("labels_path"), f"{source_name}.labels_path", project_root
+                    ),
+                    images_path=_resolved_path(
+                        source.get("images_path"), f"{source_name}.images_path", project_root
+                    ),
+                    role=role,
+                    provenance=_non_empty_string(
+                        source.get("provenance", "Not documented"),
+                        f"{source_name}.provenance",
+                    ),
+                    authorization=_non_empty_string(
+                        source.get("authorization", "Maintainer confirmation pending"),
+                        f"{source_name}.authorization",
+                    ),
+                )
+            )
+        sources = tuple(parsed_sources)
+
+    if not sources or not any(source.role == "development" for source in sources):
+        raise ConfigurationError("dataset.sources must include at least one development source.")
+    names = [source.name for source in sources]
+    if len(names) != len(set(names)):
+        raise ConfigurationError("dataset source names must be unique.")
+
+    charset = _non_empty_string(
+        values.get("expected_charset", defaults.expected_charset), "dataset.expected_charset"
+    )
+    if len(charset) != len(set(charset)):
+        raise ConfigurationError("dataset.expected_charset must not contain duplicates.")
+
+    return DatasetSettings(
+        name=_non_empty_string(values.get("name", defaults.name), "dataset.name"),
+        sources=sources,
+        expected_width=_integer(
+            values.get("expected_width", defaults.expected_width),
+            "dataset.expected_width",
+            minimum=1,
+        ),
+        expected_height=_integer(
+            values.get("expected_height", defaults.expected_height),
+            "dataset.expected_height",
+            minimum=1,
+        ),
+        label_length=_integer(
+            values.get("label_length", defaults.label_length),
+            "dataset.label_length",
+            minimum=1,
+        ),
+        expected_charset=charset,
+        rare_character_threshold=_integer(
+            values.get("rare_character_threshold", defaults.rare_character_threshold),
+            "dataset.rare_character_threshold",
+            minimum=1,
+        ),
+        perceptual_hash_distance=_integer(
+            values.get("perceptual_hash_distance", defaults.perceptual_hash_distance),
+            "dataset.perceptual_hash_distance",
+            minimum=0,
+            maximum=64,
+        ),
+        validation_fraction=_floating(
+            values.get("validation_fraction", defaults.validation_fraction),
+            "dataset.validation_fraction",
+            minimum=0.0,
+            maximum=1.0,
+            inclusive_minimum=False,
+            inclusive_maximum=False,
+        ),
+        split_seed=_integer(
+            values.get("split_seed", defaults.split_seed),
+            "dataset.split_seed",
+            minimum=0,
+            maximum=2**32 - 1,
+        ),
+        artifacts_path=_resolved_path(
+            values.get("artifacts_path", defaults.artifacts_path),
+            "dataset.artifacts_path",
+            project_root,
+        ),
+        dataset_card_path=_resolved_path(
+            values.get("dataset_card_path", defaults.dataset_card_path),
+            "dataset.dataset_card_path",
+            project_root,
+        ),
+    )
+
+
 def load_settings(
     config_path: Path | None = None,
     *,
@@ -334,15 +526,18 @@ def load_settings(
             raise ConfigurationError(f"Could not read configuration file: {source}") from error
         document = _as_mapping(loaded, "root")
 
-    _reject_unknown_keys(document, {"runtime", "training"}, "top-level")
+    _reject_unknown_keys(document, {"runtime", "training", "dataset"}, "top-level")
     runtime_values = _as_mapping(document.get("runtime"), "runtime")
     training_values = _as_mapping(document.get("training"), "training")
+    dataset_values = _as_mapping(document.get("dataset"), "dataset")
     _reject_unknown_keys(runtime_values, _RUNTIME_KEYS, "runtime")
     _reject_unknown_keys(training_values, _TRAINING_KEYS, "training")
+    _reject_unknown_keys(dataset_values, _DATASET_KEYS, "dataset")
 
     return CipherLensSettings(
         runtime=_runtime_settings(runtime_values, environment, root),
         training=_training_settings(training_values),
+        dataset=_dataset_settings(dataset_values, root),
         source=source,
     )
 

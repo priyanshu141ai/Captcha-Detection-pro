@@ -22,3 +22,35 @@ training:
   num_workers: 0
   cache_images: true
   deterministic: false
+
+dataset:
+  name: cipherlens-repository-dataset
+  expected_width: 151
+  expected_height: 41
+  label_length: 6
+  expected_charset: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+  rare_character_threshold: 5
+  perceptual_hash_distance: 4
+  validation_fraction: 0.2
+  split_seed: 42
+  artifacts_path: artifacts
+  dataset_card_path: docs/dataset-card.md
+  sources:
+    - name: batch_0
+      labels_path: labels.txt
+      images_path: data/batch_0
+      role: development
+      provenance: >-
+        Repository-tracked CAPTCHA-style images; exact generation process is not documented.
+      authorization: >-
+        Supplied by the repository owner for authorized educational use; independent license
+        evidence is pending.
+    - name: batch_1
+      labels_path: requirements2.txt
+      images_path: data/batch_1
+      role: development
+      provenance: >-
+        Repository-tracked CAPTCHA-style images; exact generation process is not documented.
+      authorization: >-
+        Supplied by the repository owner for authorized educational use; independent license
+        evidence is pending.
