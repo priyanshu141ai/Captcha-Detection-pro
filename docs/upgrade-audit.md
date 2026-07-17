@@ -202,7 +202,7 @@ validation split, not new external metrics.
   checkpoint version, dataset version, configuration, timestamp, Git commit, and
   training source metadata. Its epoch is 9, while the ignored history contains
   24 rows and a tie-broken best row at epoch 21.
-- **Affected files:** `train.py`, `README.md`, `docs/OPERATIONS.md`,
+- **Affected files:** `train.py`, `README.md`, `docs/operations.md`,
   `models/captcha_crnn.pt`, `training_history.json`, `.gitignore`.
 - **Why it matters:** A normal command can irreversibly replace the only approved
   artifact, and the shipped model cannot be traced to an exact dataset/config/run
@@ -700,7 +700,7 @@ Modified files:
 - `.github/workflows/ci.yml`
 - `requirements.txt`
 - `README.md`
-- `docs/OPERATIONS.md`
+- `docs/operations.md`
 - `AGENTS.md`
 - `app.py`
 - `train.py`

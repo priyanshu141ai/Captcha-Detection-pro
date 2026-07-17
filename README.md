@@ -1,43 +1,139 @@
 # CipherLens
 
-CipherLens is a local Streamlit and FastAPI system that reads six-character CAPTCHA images with a compact CRNN (convolutional recurrent neural network) and six position-wise outputs from a shared character classifier.
+<p align="center">
+  <img src="assets/cipherlens-mark.png" alt="CipherLens logo" width="120">
+</p>
 
-Use CipherLens only with synthetic images or systems and data you own or are
-explicitly authorized to test. The project does not automate browser interaction,
-CAPTCHA submission, or access-control bypass.
+<p align="center">
+  Production-oriented OCR for fixed-length, authorized CAPTCHA-style images.
+</p>
 
-## Documentation
+<p align="center">
+  <a href="https://github.com/priyanshu141ai/Captcha-Detection-pro/actions/workflows/ci.yml"><img src="https://github.com/priyanshu141ai/Captcha-Detection-pro/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <img src="https://img.shields.io/badge/Python-3.11-3776AB" alt="Python 3.11">
+  <img src="https://img.shields.io/badge/PyTorch-CPU-EE4C2C" alt="PyTorch CPU">
+</p>
 
-See [CipherLens Technical Documentation](docs/TECHNICAL_DOCUMENTATION.md) for the architecture, dataset contract, training pipeline, inference API, tests, checkpoint format, and troubleshooting guide.
+CipherLens recognizes six-character text in synthetic, owned, or explicitly
+authorized CAPTCHA-style images. It combines a compact PyTorch CRNN, a typed
+FastAPI inference service, a Streamlit frontend, reproducible dataset and
+evaluation tooling, and a hardened CPU-only container deployment.
 
-See [Operations Guide](docs/OPERATIONS.md) for Docker deployment, health checks, CI/CD, workload controls, security, model promotion, and rollback.
+> **Ethical use:** Do not use CipherLens to automate third-party CAPTCHA
+> submission, bypass access controls, or interact with systems you do not own or
+> have explicit permission to test. The project intentionally contains no browser
+> automation or external-site integration.
 
-## Why this model
+## Problem statement
 
-The two supplied batches contain 1,000 images. Every image is 151×41 pixels and every label has six mixed-case alphanumeric characters. A fixed-length CRNN is the best practical baseline here because it:
+The input is a noisy 151 x 41 RGB image containing exactly six mixed-case
+alphanumeric characters. The system must recover the full string without manual
+character segmentation, remain practical on CPU, and expose enough evidence to
+distinguish a working demo from a trustworthy model release.
 
-- reads the complete image as a six-step sequence, so characters do not need to be manually segmented;
-- handles small horizontal shifts and overlapping/noisy characters;
-- is much smaller and faster on CPU than transformer OCR models such as TrOCR or SVTR;
-- avoids the blank-collapse that CTC models commonly exhibit with very small datasets;
-- can be trained from scratch on a small, domain-specific dataset when paired with augmentation and class weighting.
+The main constraint is data, not model size: the repository contains 1,000
+labelled development images, several rare characters, incomplete source
+provenance, and no independent external-test split.
 
-The dataset is the main accuracy constraint. It contains 1,000 strings and several characters appear once. Add more labeled examples—especially for rare characters—before treating confidence or validation accuracy as production-grade.
+## Architecture
 
-### Current checkpoint
+```mermaid
+flowchart LR
+    U[Authorized user] --> S[Streamlit UI]
+    S -->|validated multipart image| A[FastAPI service]
+    S -. retryable failure only .-> F[Local inference fallback]
+    A --> V[Upload validation]
+    V --> I[Cached CRNN recognizer]
+    F --> I2[Cached local CRNN]
+    I --> R[Prediction, confidence, latency]
+    I2 --> R
+    A --> M[Bounded metrics]
+```
 
-The included checkpoint was warm-started from batch 0, fine-tuned on both batches, and selected on a deterministic 800/200 coverage-aware split:
+The shared preprocessing path converts to RGB, resizes to 176 x 48, normalizes
+pixels to `[-1, 1]`, and feeds four convolution blocks followed by a bidirectional
+LSTM. Six position-wise outputs are greedily decoded with the checkpoint
+vocabulary. Training, evaluation, serving, and presentation remain separate.
 
-- character accuracy: **98.58%**;
-- complete six-character accuracy: **92%**;
-- observed character classes: **43**;
-- model size: about **1.19 million parameters**.
+See [Architecture](docs/architecture.md) for component boundaries, data flows,
+failure behavior, deployment, and design decisions.
 
-These figures describe this dataset only. The displayed confidence is the geometric mean of the six softmax probabilities and is not statistically calibrated.
+## Dataset
 
-## Setup
+| Property | Current value |
+|---|---:|
+| Authorized development images | 1,000 |
+| Source batches | 2 x 500 |
+| Image contract | 151 x 41 RGB-compatible |
+| Label contract | 6 characters |
+| Deterministic split | 800 train / 200 validation |
+| Observed classes | 43 |
+| External-test samples | 0 |
 
-PowerShell:
+`python -m scripts.audit_dataset` validates image decoding, dimensions, labels,
+vocabulary, exact hashes, perceptual near-duplicates, repeated labels, split
+leakage, and source containment. It never deletes suspicious files. Related
+samples are grouped before deterministic splitting.
+
+Full provenance, authorization gaps, hashes, rare/unseen characters, and split
+roles are recorded in the [Dataset Card](docs/dataset-card.md).
+
+## Results
+
+The committed Model V1 evaluation covers the 200-row validation manifest only.
+The legacy checkpoint does not contain enough training-split metadata to rule out
+historical overlap, so these numbers are **provisional diagnostics**, not external
+generalization or promotion evidence.
+
+| Metric | Model V1 validation result |
+|---|---:|
+| Character accuracy | 98.5833% |
+| Exact-string accuracy | 92.0000% |
+| Character error rate | 1.4167% |
+| Normalized edit distance | 0.014167 |
+| Sequence ECE | 0.037364 |
+| Median CPU model-forward latency | 4.486 ms |
+| Parameters | 1,190,475 |
+| Checkpoint size | 4.56 MiB |
+
+Latency is a warmed-up, single-sample model forward pass and excludes decode and
+preprocessing. External evaluation and independent calibration remain pending.
+See the [Model Card](docs/model-card.md) and
+[Model Comparison](docs/model-comparison.md).
+
+### Error-analysis examples
+
+All 16 failed validation strings are exported to
+[`reports/evaluation/failed_predictions.csv`](reports/evaluation/failed_predictions.csv).
+Representative errors show why exact-string accuracy is stricter than character
+accuracy:
+
+| Target | Prediction | Observed error |
+|---|---|---|
+| `p3FZWQ` | `P3FZWQ` | Upper/lower-case confusion at position 1 |
+| `TG3R68` | `TG3RB8` | `6` confused with `B` at position 5 |
+| `RbRLGH` | `RbRL6H` | `G` confused with `6` at position 5 |
+| `eTPNCC` | `eTpNCc` | Two upper/lower-case confusions |
+
+The [confusion matrix](reports/figures/confusion_matrix.png) and
+[reliability diagram](reports/figures/reliability_diagram.png) provide the full
+static analysis.
+
+## Current limitations
+
+- Output is fixed at six characters and limited to the checkpoint vocabulary.
+- Dataset generation, collection date, and independent license evidence are not
+  fully documented.
+- No authorized, independently sourced external-test or calibration split exists.
+- Legacy checkpoint split provenance makes current validation evidence provisional.
+- Rare and unseen classes limit robustness on new generators or visual styles.
+- Confidence is a review signal, not a universal probability of correctness.
+- Metrics are process-local; production aggregation, alerting, TLS, authentication,
+  and rate limiting belong at the deployment platform or trusted ingress.
+
+## Installation
+
+Requirements: Python 3.11 and a PowerShell terminal at the repository root.
 
 ```powershell
 python -m venv .venv
@@ -46,190 +142,210 @@ python -m pip install --upgrade pip
 python -m pip install --editable ".[dev]"
 ```
 
-This installs the `cipherlens` package plus the formatting, linting, typing, and
-coverage tools used by contributors. For a runtime-only local installation, use
-`python -m pip install --editable .` instead. `requirements.txt` remains available
-for container and compatibility installs.
+Runtime-only installation:
 
-The repository includes extracted training images in `data/batch_0` and
-`data/batch_1`.
+```powershell
+python -m pip install --editable .
+```
 
-## Configuration
+Validated defaults live in `configs/default.yaml`; environment variables override
+them at startup. Copy `.env.example` to `.env` only for local Compose overrides,
+and never commit `.env` or secrets. The complete variable reference is in the
+[Operations Guide](docs/operations.md#runtime-configuration).
 
-Validated defaults live in `configs/default.yaml`. Runtime environment variables
-override the YAML file:
+## Training
 
-| Variable | Default | Purpose |
-|---|---:|---|
-| `CIPHERLENS_CONFIG` | `configs/default.yaml` | Alternate YAML settings file |
-| `CIPHERLENS_CHECKPOINT` | `models/captcha_crnn.pt` | Approved checkpoint path |
-| `CIPHERLENS_TORCH_THREADS` | `2` | Process-wide CPU thread count |
-| `CIPHERLENS_CONFIDENCE_THRESHOLD` | `0.75` | Manual-review warning threshold |
-| `CIPHERLENS_MAX_UPLOAD_BYTES` | `10485760` | Upload byte limit |
-| `CIPHERLENS_MAX_UPLOAD_PIXELS` | `4000000` | Decoded image pixel limit |
-| `CIPHERLENS_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL` |
-| `CIPHERLENS_LOG_FORMAT` | `console` | `console` or newline-delimited `json` |
-| `CIPHERLENS_API_MAX_BATCH_SIZE` | `8` | Maximum images per batch request |
-| `CIPHERLENS_API_MAX_CONCURRENCY` | `1` | Concurrent model inference jobs per process |
-| `CIPHERLENS_API_URL` | `http://127.0.0.1:8000` | Owned CipherLens backend URL used by Streamlit |
-| `CIPHERLENS_API_TIMEOUT_SECONDS` | `15` | Streamlit-to-API request timeout |
-| `CIPHERLENS_LOCAL_FALLBACK` | `true` | Use the approved local model after retryable API failures |
-
-Invalid values fail at startup with a field-specific message. Copy
-`.env.example` to `.env` for local Compose overrides; never commit `.env`.
-
-## Dataset audit
+Audit the dataset first, then write only to a candidate artifact:
 
 ```powershell
 python -m scripts.audit_dataset
-```
-
-This non-destructive command validates labels, vocabulary, image decoding and
-dimensions; groups exact hashes, perceptual near-duplicates, and repeated labels;
-then writes `artifacts/dataset_report.json`, three CSV reports, and
-[the dataset card](docs/dataset-card.md). The current version has 1,000 valid
-samples, preserves the seed-42 800/200 development split, and has no configured
-external test set, so external evaluation remains pending.
-
-## Train
-
-Training must write to a candidate path so the approved checkpoint is not
-overwritten:
-
-```powershell
 python train.py `
+  --extra-dataset requirements2.txt data/batch_1 `
   --output models/captcha_crnn_candidate.pt `
   --history-output artifacts/candidate-training-history.json
 ```
 
-Useful overrides:
-
-```powershell
-python train.py --config configs/default.yaml `
-  --epochs 80 --batch-size 32 --device cpu `
-  --output models/captcha_crnn_candidate.pt
-```
-
-Train on both included batches:
-
-```powershell
-python train.py --extra-dataset requirements2.txt data/batch_1 `
-  --output models/captcha_crnn_candidate.pt
-```
-
-Warm-start from the existing checkpoint when extending the character set:
-
-```powershell
-python train.py --extra-dataset requirements2.txt data/batch_1 `
-  --init-checkpoint models/captcha_crnn.pt --learning-rate 0.0002
-```
-
-The best checkpoint is written to the explicit candidate path. Review independent
-evaluation evidence before promoting a candidate; do not replace
-`models/captcha_crnn.pt` during routine training.
-
-Training verifies image hashes and assignments against
-`artifacts/split_manifest.csv`. Each candidate stores architecture,
-preprocessing, dataset/split versions, configuration, metrics, Git commit, and
-creation time. Resume an interrupted run with:
+Training supports YAML defaults, CLI overrides, deterministic seeds,
+coverage-aware manifests, augmentation, class weighting, AdamW, scheduling,
+gradient clipping, early stopping, safe resume checkpoints, and optional MLflow.
+It refuses to overwrite `models/captcha_crnn.pt` during routine training.
 
 ```powershell
 python train.py --resume-checkpoint artifacts/candidate-training-resume.pt
-```
-
-Optional MLflow 3 tracking remains disabled unless requested:
-
-```powershell
 python -m pip install --editable ".[tracking]"
 python train.py --mlflow --mlflow-experiment CipherLens
 ```
 
-## Evaluate
+Do not promote a candidate without aligned external evidence and explicit review.
+
+## Evaluation
 
 ```powershell
 python -m scripts.evaluate_model
+python -m scripts.compare_models
 ```
 
-Evaluation verifies every image hash against the versioned manifest and writes
-metrics, failures, calibration bins, a confusion matrix, a reliability diagram,
-and [the model card](docs/model-card.md). The current checkpoint lacks enough
-training-split provenance to rule out overlap with the newer manifest, so these
-validation results are provisional. External evaluation remains pending.
-
-Optional temperature scaling is validation-only and does not modify the model:
+Evaluation verifies manifest paths, hashes, labels, dataset version, and
+checkpoint identity before reporting character/exact accuracy, CER, normalized
+edit distance, per-position and per-character metrics, failures, latency,
+calibration, and figures. Optional temperature scaling is validation-only:
 
 ```powershell
 python -m scripts.evaluate_model --temperature-scale
 ```
 
-## Model experiments
+When an external set is unavailable, the evaluator reports `pending` instead of
+inventing a value.
 
-Model V1 remains the production baseline. Model V2 is an isolated CRNN-CTC
-experiment with safe candidate defaults:
-
-```powershell
-python -m scripts.train_ctc_experiment
-python -m scripts.evaluate_ctc_model
-python -m scripts.compare_models
-```
-
-No V2 candidate was trained for the committed comparison, so its metrics remain
-blank. Model V3 transformer work is deferred because 1,000 images and no external
-test set do not justify the dependency, compute, and overfitting risk. See
-[the comparison decision](docs/model-comparison.md).
-
-## Run the app
-
-```powershell
-streamlit run app.py
-```
-
-Open `http://localhost:8501`, upload a PNG/JPG CAPTCHA, and select **Recognize text**.
-The UI validates the image locally, calls the configured CipherLens API, and
-shows model version, inference latency, and serving path. If the API is
-unavailable and fallback is enabled, the approved local checkpoint is used.
-
-## Run the API
+## FastAPI usage
 
 ```powershell
 python -m uvicorn cipherlens.api:app --host 127.0.0.1 --port 8000
 ```
 
-OpenAPI docs are at `http://127.0.0.1:8000/docs`. Example:
+OpenAPI is available at `http://127.0.0.1:8000/docs`.
 
 ```powershell
 curl.exe -X POST http://127.0.0.1:8000/predict `
   -F "file=@data/batch_0/captcha_00000.png;type=image/png"
 ```
 
-The backend loads the checkpoint once per process, exposes health/readiness,
-model information, single and batch prediction, and Prometheus-compatible
-metrics. It validates extension, MIME type, bytes, decoded format, pixels, and
-image integrity; uploaded bytes are not logged or persisted.
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Process liveness |
+| `GET /ready` | Model readiness |
+| `GET /model-info` | Architecture and checkpoint contract |
+| `POST /predict` | One validated image |
+| `POST /predict/batch` | Bounded image batch |
+| `GET /metrics` | Prometheus-compatible process metrics |
 
-## Production container
+Responses include predicted text, overall and per-character confidence, model
+version, inference time, and request ID. Uploaded bytes are processed in memory
+and are neither logged nor deliberately persisted.
+
+## Streamlit usage
+
+Start the API, then run:
+
+```powershell
+python -m streamlit run app.py
+```
+
+Open `http://127.0.0.1:8501`. The frontend validates PNG/JPEG uploads before
+calling FastAPI, displays confidence, latency, model version, and serving path,
+and handles structured backend errors. A configurable local fallback is used only
+for retryable API/network failures; HTTP 4xx validation failures do not fall back.
+
+## Docker usage
 
 ```powershell
 docker compose up --build --detach --wait
+docker compose ps
 ```
 
-Streamlit is available on port 8501 and FastAPI/OpenAPI on port 8000. The shared
-multi-stage image uses CPU-only PyTorch; both services run non-root with
-read-only filesystems, bounded temporary storage, dropped capabilities, resource
-limits, and health checks. Training data, candidates, reports, and secrets are
-excluded. See the operations guide for versioned packaged-model and read-only
-model-mount workflows.
+- Streamlit: `http://127.0.0.1:8501`
+- FastAPI/OpenAPI: `http://127.0.0.1:8000/docs`
 
-## Verify
+Both services share a multi-stage CPU-only image and run as UID/GID 10001 with a
+read-only root filesystem, bounded `/tmp`, dropped capabilities, health checks,
+and resource limits. For a read-only deployment-managed checkpoint:
 
 ```powershell
-python -m coverage run -m unittest discover -s tests -v
-python -m coverage report
-python -m scripts.verify_runtime
+$env:CIPHERLENS_MODEL_HOST_PATH = "C:/models/approved/captcha-crnn-v1.pt"
+docker compose -f compose.yaml -f compose.model-mount.yaml `
+  up --build --detach --wait
+```
+
+See [Operations](docs/operations.md) for model packaging, promotion, rollback,
+scaling, security, and failure recovery.
+
+## Testing
+
+```powershell
+python -m compileall -q app.py train.py src tests scripts
 python -m ruff format --check .
 python -m ruff check .
 python -m mypy
+python -m coverage erase
+python -m coverage run -m unittest discover -s tests -v
+python -m coverage report
+python -m scripts.verify_runtime
 python -m pip check
+docker compose config
 ```
 
-Use the recognizer only with CAPTCHA images and systems you own or are authorized to test.
+CI repeats linting, typing, generated-fixture unit/integration tests, an 85%
+branch-coverage gate, approved-artifact compatibility checks when available, and
+a running-container security smoke test.
+
+## Reproducibility
+
+1. Use Python 3.11 and the pinned runtime dependencies.
+2. Run `python -m scripts.audit_dataset` and record the dataset/split hashes.
+3. Train from the versioned manifest with an explicit seed and candidate path.
+4. Retain checkpoint metadata: architecture, vocabulary, preprocessing, dataset,
+   configuration, validation metrics, Git commit, and creation time.
+5. Evaluate the exact checkpoint and manifest; keep validation, calibration, and
+   external-test roles separate.
+6. Record the checkpoint SHA-256 and immutable image digest during promotion.
+
+## Deployment architecture
+
+```mermaid
+flowchart TB
+    C[Authorized client] -->|TLS, auth, rate limit| G[Trusted ingress]
+    G --> UI[Streamlit container :8501]
+    UI --> API[FastAPI container :8000]
+    API --> CK[(Approved checkpoint, packaged or read-only mount)]
+    API --> PM[Metrics collector]
+    UI -. optional local fallback .-> CK
+    API --> L[Structured stdout logs]
+    UI --> L
+```
+
+Compose provides the application baseline; a production platform must provide
+TLS termination, access control, centralized logs/metrics, alerting, backups, and
+artifact/image provenance.
+
+## Repository map
+
+```text
+src/cipherlens/
+|-- api/          # FastAPI routes, schemas, upload boundary
+|-- data/         # audit, manifests, preprocessing
+|-- evaluation/   # metrics, calibration, reports, comparison
+|-- inference/    # checkpoint loading, client, prediction
+|-- models/       # position-wise and experimental CTC models
+|-- monitoring/   # bounded process metrics
+|-- training/     # data, engine, checkpoint, optional tracking
+`-- utils/        # reproducibility helpers
+```
+
+Compatibility modules under `src/` preserve existing `src.*` imports while new
+code uses the installable `cipherlens` package.
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [Architecture](docs/architecture.md) | Components, data flows, trust boundaries, decisions |
+| [Dataset Card](docs/dataset-card.md) | Provenance, authorization, splits, quality |
+| [Model Card](docs/model-card.md) | Evidence, runtime, calibration, limitations |
+| [Operations](docs/operations.md) | Deployment, configuration, promotion, rollback |
+| [Interview Story](docs/interview-story.md) | Concise engineering narrative and trade-offs |
+| [Technical Reference](docs/TECHNICAL_DOCUMENTATION.md) | Detailed implementation and CLI contracts |
+| [Upgrade Audit](docs/upgrade-audit.md) | Original evidence-based modernization plan |
+
+## Future improvements
+
+- Collect a separately sourced, authorized external-test and calibration set.
+- Record generator, license, collection date, and family metadata for every sample.
+- Add targeted examples for rare/unseen characters and generator families.
+- Run repeated, aligned V1/V2 training experiments and ablations before promotion.
+- Add deployment-level tracing, metrics aggregation, alerting, artifact signing,
+  image scanning, TLS, authentication, and rate limiting.
+- Consider variable-length decoding or transformer OCR only when data and measured
+  evidence justify the added complexity.
+
+CipherLens is an educational recognition system for authorized data—not an
+access-control bypass tool.

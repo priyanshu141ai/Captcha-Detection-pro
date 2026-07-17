@@ -18,50 +18,35 @@ The current dataset contains 1,000 labeled PNG images across two batches. Each s
 
 ```text
 Captcha-Detection/
-|-- .streamlit/
-|   `-- config.toml              # Streamlit theme and upload configuration
-|-- assets/
-|   `-- cipherlens-mark.png      # Application logo
-|-- data/
-|   |-- batch_0/                 # 500 CAPTCHA PNG images
-|   `-- batch_1/                 # 500 additional CAPTCHA PNG images
-|-- design/
-|   `-- cipherlens-concept.png   # UI design reference
-|-- docs/
-|   `-- TECHNICAL_DOCUMENTATION.md
+|-- configs/                     # Validated defaults and model registry
+|-- data/                        # Two authorized 500-image development batches
+|-- docs/                        # Architecture, cards, operations, interview story
 |-- models/
-|   `-- captcha_crnn.pt          # Trained model checkpoint
-|-- configs/
-|   |-- default.yaml             # Runtime, training, evaluation, and dataset defaults
-|   `-- model-registry.yaml      # Comparison inventory and lifecycle status
+|   `-- captcha_crnn.pt          # Approved production checkpoint
 |-- reports/                     # Versioned evaluation tables and figures
-|-- scripts/
-|   |-- audit_dataset.py         # Dataset validation and manifest generation
-|   |-- compare_models.py        # Evidence-aligned registered-model comparison
-|   |-- evaluate_ctc_model.py    # Optional Model V2 evaluation
-|   |-- evaluate_model.py        # Versioned evaluation and report generation
-|   |-- train_ctc_experiment.py  # Safe experimental Model V2 training
-|   `-- verify_runtime.py        # Production checkpoint smoke check
+|-- scripts/                     # Audit, evaluation, comparison, runtime verification
 |-- src/
 |   |-- cipherlens/              # Installable application package
-|   |   |-- api/                 # FastAPI routes, schemas, and upload boundary
-|   |   |-- data/                # Dataset loading, splitting, and preprocessing
-|   |   |-- evaluation/          # Metrics, calibration, benchmarks, and reports
-|   |   |-- inference/           # Checkpoint inference and upload validation
-|   |   |-- models/              # Network, codec, and edit-distance logic
-|   |   |-- monitoring/          # Bounded in-process service metrics
-|   |   |-- training/            # Optimization and checkpoint workflows
+|   |   |-- api/                 # FastAPI routes, schemas, upload boundary
+|   |   |-- data/                # Audit, manifests, preprocessing
+|   |   |-- evaluation/          # Metrics, calibration, reports, comparison
+|   |   |-- inference/           # Restricted checkpoint loading and API client
+|   |   |-- models/              # Position-wise and experimental CTC models
+|   |   |-- monitoring/          # Bounded process-local metrics
+|   |   |-- training/            # Data, optimization, checkpoint, tracking
 |   |   `-- utils/               # Reproducibility helpers
-|   |-- data.py                  # Legacy compatibility import
-|   |-- inference.py             # Legacy compatibility import
-|   `-- model.py                 # Legacy compatibility import
+|   |-- data.py                  # Legacy compatibility imports
+|   |-- inference.py
+|   |-- model.py
+|   `-- validation.py
 |-- tests/
-|   `-- test_core.py             # Core regression tests
-|-- app.py                       # Streamlit application
-|-- labels.txt                   # Image filename-to-label mapping
-|-- requirements2.txt            # Batch 1 filename-to-label mapping
-|-- requirements.txt             # Runtime Python dependencies
-`-- train.py                     # Training and validation entry point
+|   |-- compatibility/           # Approved-artifact smoke checks
+|   |-- integration/             # FastAPI boundary tests
+|   `-- unit/                    # Generated-fixture component tests
+|-- app.py                       # Streamlit frontend and controlled fallback
+|-- train.py                     # Safe candidate-training CLI
+|-- Dockerfile                   # Multi-stage CPU-only runtime
+`-- compose.yaml                 # FastAPI and Streamlit services
 ```
 
 ## 3. Runtime requirements
@@ -610,7 +595,7 @@ uses a bounded timeout, validates Pydantic response contracts, and exposes only
 safe backend error messages and request IDs.
 
 Production deployment, CI/CD, health checks, security controls, workload
-tuning, and rollback are documented in [OPERATIONS.md](OPERATIONS.md).
+tuning, and rollback are documented in [operations.md](operations.md).
 
 ## 13. Automated tests
 

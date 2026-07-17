@@ -1,5 +1,8 @@
 # CipherLens Operations Guide
 
+For system boundaries and request flows, see [Architecture](architecture.md).
+For evaluation evidence and limitations, see the [Model Card](model-card.md).
+
 ## Production topology
 
 Compose runs two isolated services from one CPU-only production image:
