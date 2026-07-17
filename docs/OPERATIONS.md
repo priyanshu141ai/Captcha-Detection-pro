@@ -2,14 +2,16 @@
 
 ## Production topology
 
-CipherLens is a stateless Streamlit inference service. The trained checkpoint is
-loaded once per application process and cached for subsequent predictions.
-Uploaded files are validated and processed in memory; the application does not
-deliberately persist them.
+Compose runs two isolated services from one CPU-only production image:
 
-The production Docker image contains only the runtime application, source
-package, visual asset, Streamlit configuration, and model checkpoint. Training
-images and training tooling are excluded from the image.
+- `api`: FastAPI model serving on port 8000;
+- `cipherlens`: Streamlit presentation on port 8501, calling `http://api:8000`.
+
+The checkpoint is loaded once per process. Uploaded files are validated and
+processed in memory; neither service deliberately persists them. The multi-stage
+image contains runtime dependencies, application code, UI assets, configuration,
+and the approved checkpoint. Build tooling, tests, reports, candidate models,
+training images, local configuration, and secrets are excluded.
 
 ## Local startup
 
@@ -28,20 +30,22 @@ Start the separate inference API:
   --host 127.0.0.1 --port 8000
 ```
 
-OpenAPI is available at `http://127.0.0.1:8000/docs`. The current Docker image
-continues to serve Streamlit; API container topology is handled in Milestone 9.
+OpenAPI is available at `http://127.0.0.1:8000/docs`.
 
 ## Docker startup
 
 ```powershell
-docker compose up --build -d
+docker compose up --build --detach --wait
 docker compose ps
 ```
+
+Open Streamlit at `http://127.0.0.1:8501` and OpenAPI at
+`http://127.0.0.1:8000/docs`.
 
 Inspect logs:
 
 ```powershell
-docker compose logs --follow --tail 100 cipherlens
+docker compose logs --follow --tail 100 api cipherlens
 ```
 
 Stop the service:
@@ -50,9 +54,9 @@ Stop the service:
 docker compose down
 ```
 
-The container runs as a non-root user with a read-only root filesystem,
-`no-new-privileges`, a bounded temporary filesystem, and an application health
-check.
+Both containers run as UID/GID 10001 with all Linux capabilities dropped, a
+read-only root filesystem, `no-new-privileges`, graceful `SIGTERM` handling, a
+bounded writable `/tmp`, resource limits, and service-specific health checks.
 
 ## Health checks
 
@@ -68,9 +72,9 @@ PowerShell check:
 Invoke-WebRequest http://127.0.0.1:8501/_stcore/health -UseBasicParsing
 ```
 
-The Docker health check verifies both the checkpoint file and the Streamlit
-health endpoint. CI additionally loads the checkpoint and performs known-image
-predictions from both data batches.
+The Streamlit health check verifies process liveness. Compose waits for FastAPI
+readiness before starting Streamlit. CI starts both containers and verifies
+health, UID, read-only behavior, temporary writes, and CPU-only PyTorch.
 
 FastAPI service checks:
 
@@ -106,7 +110,47 @@ and model-dependent endpoints remain unavailable.
 Copy `.env.example` to `.env` to override Compose defaults. Do not commit `.env`
 files or secrets. Configuration is validated at startup; invalid integers,
 thresholds, paths, log levels, and log formats fail with an actionable message.
-Runtime environment variables override `configs/default.yaml`.
+Runtime environment variables override `configs/default.yaml`. The example uses
+the Compose hostname `http://api:8000`; source-based local startup keeps the
+configuration default `http://127.0.0.1:8000`.
+
+Compose-only controls:
+
+| Environment variable | Default | Purpose |
+|---|---:|---|
+| `CIPHERLENS_IMAGE` | `cipherlens:local` | Versioned image/tag used by both services |
+| `CIPHERLENS_FRONTEND_API_URL` | `http://api:8000` | Backend URL injected into Streamlit by Compose |
+| `CIPHERLENS_API_PORT` | `8000` | Host API port |
+| `CIPHERLENS_FRONTEND_PORT` | `8501` | Host Streamlit port |
+| `CIPHERLENS_API_CPUS` | `2.0` | API CPU limit |
+| `CIPHERLENS_API_MEMORY` | `2G` | API memory limit |
+| `CIPHERLENS_FRONTEND_CPUS` | `1.0` | Streamlit CPU limit |
+| `CIPHERLENS_FRONTEND_MEMORY` | `1G` | Streamlit memory limit |
+| `CIPHERLENS_MODEL_HOST_PATH` | unset | Absolute approved checkpoint path for mount mode |
+
+Tune limits from measured workload evidence. Keep one API worker because each
+worker loads another model copy; scale service replicas only after measuring CPU
+and memory.
+
+## Model packaging and mounting
+
+The default strategy packages only `models/captcha_crnn.pt` into a versioned
+image. Candidate checkpoints are excluded by `.dockerignore`. Tag the image with
+the approved model/application version and retain the previous tag for rollback.
+
+For a deployment-managed checkpoint, set an absolute path and apply the explicit
+mount overlay:
+
+```powershell
+$env:CIPHERLENS_MODEL_HOST_PATH = "C:/models/approved/captcha-crnn-v1.pt"
+docker compose -f compose.yaml -f compose.model-mount.yaml `
+  up --build --detach --wait
+```
+
+The bind is read-only in both services. Never point it at an unreviewed candidate.
+With a missing or invalid checkpoint, FastAPI remains live at `/health`, returns
+503 from `/ready`, and becomes unhealthy; Compose does not start the dependent
+frontend. Logs contain the safe model-unavailable event without checkpoint data.
 
 ## Workload controls
 
@@ -160,7 +204,8 @@ Container validation:
 
 ```powershell
 docker compose config
-docker build --tag cipherlens:release .
+docker compose up --build --detach --wait
+docker compose down
 ```
 
 ## CI/CD
@@ -172,7 +217,8 @@ docker build --tag cipherlens:release .
 3. runs generated-fixture unit, API integration, and application tests separately;
 4. enforces at least 85% branch coverage across `cipherlens`;
 5. when approved artifacts are present, verifies batch-0 and batch-1 predictions;
-6. validates Compose and builds the production Docker image.
+6. starts the production stack and verifies health and container security;
+7. confirms a missing model keeps liveness up and readiness down.
 
 CI uses least-privilege repository permissions, cancels superseded runs, and
 applies job timeouts. Third-party Actions are pinned to reviewed commit SHAs;
@@ -242,21 +288,29 @@ evidence, at least two training runs, accuracy/CER/ECE gates, bounded latency an
 CPU model-tensor memory, and explicit approval. Model V1 remains the rollback-safe
 default until a challenger satisfies every gate.
 
+After explicit approval, copy the approved artifact to the packaged checkpoint
+path and build a new immutable `CIPHERLENS_IMAGE` tag, or update the read-only
+mount path. Record the checkpoint SHA-256, image digest, evidence report, approver,
+and previous rollback tag. Verify `/model-info` before routing traffic.
+
 ## Rollback
 
-1. Restore the previously approved `models/captcha_crnn.pt` from source control
-   or the artifact registry.
-2. Rebuild and redeploy the container.
-3. Confirm `/_stcore/health` and run `python -m scripts.verify_runtime`.
-4. Record the failed model version and validation evidence.
+1. Select the previous approved image tag or read-only checkpoint path.
+2. For packaged mode, set `CIPHERLENS_IMAGE` to the previous tag and run
+   `docker compose up --detach --no-build --force-recreate --wait`.
+3. For mount mode, restore `CIPHERLENS_MODEL_HOST_PATH` and run both Compose files
+   with `--force-recreate --wait`.
+4. Confirm `/ready`, `/model-info`, `/_stcore/health`, and one authorized smoke
+   prediction.
+5. Record the failed model version, image/checkpoint digest, and rollback time.
 
 ## Scaling notes
 
-Each worker process loads its own model copy. Scale process count only after
-measuring memory and CPU. Streamlit sessions use WebSockets, so a multi-instance
-deployment should use a load balancer with WebSocket support and session
-affinity. For high request volume or API clients, separate inference into a
-dedicated HTTP API and keep Streamlit as the presentation layer.
+Each API worker or Streamlit local-fallback process loads its own model copy.
+Scale only after measuring memory, CPU, queueing, and latency. Streamlit sessions
+use WebSockets, so multi-instance deployment needs WebSocket support and session
+affinity. Put TLS, authentication, rate limiting, and request-size enforcement at
+the trusted ingress; do not expose the service to unauthorized third parties.
 
 ## Security baseline
 

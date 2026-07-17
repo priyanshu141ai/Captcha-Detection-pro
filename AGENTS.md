@@ -78,6 +78,12 @@ python -m uvicorn cipherlens.api:app --host 127.0.0.1 --port 8000
 python -m streamlit run app.py
 ```
 
+Start the production API and frontend containers:
+
+```powershell
+docker compose up --build --detach --wait
+```
+
 Training must write to a candidate artifact and must not overwrite the production
 checkpoint:
 

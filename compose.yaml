@@ -1,11 +1,72 @@
+x-runtime: &runtime
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  stop_grace_period: 20s
+
+x-build: &build
+  context: .
+  target: runtime
+
 services:
-  cipherlens:
-    build:
-      context: .
-    image: cipherlens:local
-    restart: unless-stopped
+  api:
+    <<: *runtime
+    build: *build
+    image: "${CIPHERLENS_IMAGE:-cipherlens:local}"
+    command:
+      - python
+      - -m
+      - uvicorn
+      - cipherlens.api:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
     ports:
-      - "8501:8501"
+      - "${CIPHERLENS_API_PORT:-8000}:8000"
+    environment:
+      CIPHERLENS_CONFIG: "${CIPHERLENS_CONFIG:-configs/default.yaml}"
+      CIPHERLENS_CHECKPOINT: "${CIPHERLENS_CHECKPOINT:-models/captcha_crnn.pt}"
+      CIPHERLENS_TORCH_THREADS: "${CIPHERLENS_TORCH_THREADS:-2}"
+      CIPHERLENS_MAX_UPLOAD_BYTES: "${CIPHERLENS_MAX_UPLOAD_BYTES:-10485760}"
+      CIPHERLENS_MAX_UPLOAD_PIXELS: "${CIPHERLENS_MAX_UPLOAD_PIXELS:-4000000}"
+      CIPHERLENS_LOG_LEVEL: "${CIPHERLENS_LOG_LEVEL:-INFO}"
+      CIPHERLENS_LOG_FORMAT: "${CIPHERLENS_LOG_FORMAT:-console}"
+      CIPHERLENS_API_MAX_BATCH_SIZE: "${CIPHERLENS_API_MAX_BATCH_SIZE:-8}"
+      CIPHERLENS_API_MAX_CONCURRENCY: "${CIPHERLENS_API_MAX_CONCURRENCY:-1}"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3).read()
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+    deploy:
+      resources:
+        limits:
+          cpus: "${CIPHERLENS_API_CPUS:-2.0}"
+          memory: "${CIPHERLENS_API_MEMORY:-2G}"
+
+  cipherlens:
+    <<: *runtime
+    image: "${CIPHERLENS_IMAGE:-cipherlens:local}"
+    depends_on:
+      api:
+        condition: service_healthy
+        restart: true
+    ports:
+      - "${CIPHERLENS_FRONTEND_PORT:-8501}:8501"
     environment:
       CIPHERLENS_CONFIG: "${CIPHERLENS_CONFIG:-configs/default.yaml}"
       CIPHERLENS_CHECKPOINT: "${CIPHERLENS_CHECKPOINT:-models/captcha_crnn.pt}"
@@ -15,11 +76,21 @@ services:
       CIPHERLENS_MAX_UPLOAD_PIXELS: "${CIPHERLENS_MAX_UPLOAD_PIXELS:-4000000}"
       CIPHERLENS_LOG_LEVEL: "${CIPHERLENS_LOG_LEVEL:-INFO}"
       CIPHERLENS_LOG_FORMAT: "${CIPHERLENS_LOG_FORMAT:-console}"
-      CIPHERLENS_API_URL: "${CIPHERLENS_API_URL:-http://127.0.0.1:8000}"
+      CIPHERLENS_API_URL: "${CIPHERLENS_FRONTEND_API_URL:-http://api:8000}"
       CIPHERLENS_API_TIMEOUT_SECONDS: "${CIPHERLENS_API_TIMEOUT_SECONDS:-15}"
       CIPHERLENS_LOCAL_FALLBACK: "${CIPHERLENS_LOCAL_FALLBACK:-true}"
-    read_only: true
-    tmpfs:
-      - /tmp:size=64m
-    security_opt:
-      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3).read()
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+    deploy:
+      resources:
+        limits:
+          cpus: "${CIPHERLENS_FRONTEND_CPUS:-1.0}"
+          memory: "${CIPHERLENS_FRONTEND_MEMORY:-1G}"

@@ -210,12 +210,15 @@ image integrity; uploaded bytes are not logged or persisted.
 ## Production container
 
 ```powershell
-docker compose up --build -d
+docker compose up --build --detach --wait
 ```
 
-The production image runs as non-root, uses a read-only filesystem, includes a
-health check, and excludes training data. See the operations guide before
-deployment.
+Streamlit is available on port 8501 and FastAPI/OpenAPI on port 8000. The shared
+multi-stage image uses CPU-only PyTorch; both services run non-root with
+read-only filesystems, bounded temporary storage, dropped capabilities, resource
+limits, and health checks. Training data, candidates, reports, and secrets are
+excluded. See the operations guide for versioned packaged-model and read-only
+model-mount workflows.
 
 ## Verify
 

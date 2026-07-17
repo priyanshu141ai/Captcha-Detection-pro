@@ -1,0 +1,13 @@
+services:
+  api:
+    volumes:
+      - type: bind
+        source: "${CIPHERLENS_MODEL_HOST_PATH:?Set CIPHERLENS_MODEL_HOST_PATH to an approved checkpoint}"
+        target: /app/models/captcha_crnn.pt
+        read_only: true
+  cipherlens:
+    volumes:
+      - type: bind
+        source: "${CIPHERLENS_MODEL_HOST_PATH:?Set CIPHERLENS_MODEL_HOST_PATH to an approved checkpoint}"
+        target: /app/models/captcha_crnn.pt
+        read_only: true
