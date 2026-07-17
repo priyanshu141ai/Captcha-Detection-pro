@@ -13,6 +13,7 @@ from PIL import Image, UnidentifiedImageError
 
 from cipherlens.config import ConfigurationError, validate_torch_threads
 from cipherlens.data import prepare_image
+from cipherlens.inference.client import InferenceAPIClient, InferenceAPIError, ServedPrediction
 from cipherlens.models import (
     MODEL_ARCHITECTURE_NAME,
     MODEL_VERSION,
@@ -161,7 +162,10 @@ def load_uploaded_image(data: bytes, limits: UploadLimits | None = None) -> Imag
 __all__ = [
     "CaptchaRecognizer",
     "CheckpointValidationError",
+    "InferenceAPIClient",
+    "InferenceAPIError",
     "Prediction",
+    "ServedPrediction",
     "UploadLimits",
     "UploadValidationError",
     "load_uploaded_image",

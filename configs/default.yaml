@@ -10,6 +10,9 @@ runtime:
 api:
   max_batch_size: 8
   max_inference_concurrency: 1
+  base_url: http://127.0.0.1:8000
+  request_timeout_seconds: 15.0
+  local_fallback_enabled: true
 
 training:
   labels_path: labels.txt

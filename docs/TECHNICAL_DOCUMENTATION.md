@@ -585,9 +585,13 @@ Open `http://localhost:8501`.
 2. The application validates format, byte size, decoded pixel count, and image
    integrity before previewing it.
 3. The user selects **Recognize text**.
-4. The cached recognizer loads `models/captcha_crnn.pt`.
-5. The model returns text and confidence.
-6. The result can be copied or cleared with **Try another image**.
+4. The frontend sends the validated bytes only to `api.base_url` and validates
+   the typed response.
+5. Retryable network/5xx failures use the cached local recognizer when
+   `api.local_fallback_enabled` is true; 4xx validation errors do not fall back.
+6. The result displays text, confidence, model version, inference latency, and
+   whether FastAPI or the local fallback served it.
+7. The result can be copied or cleared with **Try another image**.
 
 ### Streamlit configuration
 
@@ -600,7 +604,10 @@ Open `http://localhost:8501`.
 - a 4,000,000 decoded-pixel application safety limit;
 - headless server mode.
 
-The uploaded image is processed in memory and is not deliberately persisted by the application.
+The uploaded image is processed in memory and is not deliberately persisted by
+the application. The HTTP client strips directory components from filenames,
+uses a bounded timeout, validates Pydantic response contracts, and exposes only
+safe backend error messages and request IDs.
 
 Production deployment, CI/CD, health checks, security controls, workload
 tuning, and rollback are documented in [OPERATIONS.md](OPERATIONS.md).

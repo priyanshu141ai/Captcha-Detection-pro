@@ -23,6 +23,9 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(settings.runtime.max_upload_bytes, 10 * 1024 * 1024)
         self.assertEqual(settings.api.max_batch_size, 8)
         self.assertEqual(settings.api.max_inference_concurrency, 1)
+        self.assertEqual(settings.api.base_url, "http://127.0.0.1:8000")
+        self.assertEqual(settings.api.request_timeout_seconds, 15.0)
+        self.assertTrue(settings.api.local_fallback_enabled)
         self.assertEqual(settings.training.seed, 42)
         self.assertEqual(settings.training.output_path, Path("models/captcha_crnn_candidate.pt"))
         self.assertEqual(
@@ -48,6 +51,9 @@ class ConfigurationTests(unittest.TestCase):
                 "CIPHERLENS_LOG_FORMAT": "json",
                 "CIPHERLENS_API_MAX_BATCH_SIZE": "4",
                 "CIPHERLENS_API_MAX_CONCURRENCY": "2",
+                "CIPHERLENS_API_URL": "https://cipherlens.internal/api/",
+                "CIPHERLENS_API_TIMEOUT_SECONDS": "5.5",
+                "CIPHERLENS_LOCAL_FALLBACK": "false",
             },
         )
 
@@ -60,6 +66,9 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(settings.runtime.log_format, "json")
         self.assertEqual(settings.api.max_batch_size, 4)
         self.assertEqual(settings.api.max_inference_concurrency, 2)
+        self.assertEqual(settings.api.base_url, "https://cipherlens.internal/api")
+        self.assertEqual(settings.api.request_timeout_seconds, 5.5)
+        self.assertFalse(settings.api.local_fallback_enabled)
 
     def test_invalid_environment_values_fail_with_field_context(self) -> None:
         cases = {
@@ -70,6 +79,9 @@ class ConfigurationTests(unittest.TestCase):
             "CIPHERLENS_LOG_FORMAT": "xml",
             "CIPHERLENS_API_MAX_BATCH_SIZE": "0",
             "CIPHERLENS_API_MAX_CONCURRENCY": "33",
+            "CIPHERLENS_API_URL": "ftp://invalid.example",
+            "CIPHERLENS_API_TIMEOUT_SECONDS": "0",
+            "CIPHERLENS_LOCAL_FALLBACK": "sometimes",
         }
         for name, value in cases.items():
             with self.subTest(name=name), self.assertRaises(ConfigurationError):

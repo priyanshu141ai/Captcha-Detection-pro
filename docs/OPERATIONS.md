@@ -99,6 +99,9 @@ and model-dependent endpoints remain unavailable.
 | `CIPHERLENS_LOG_FORMAT` | `console` | `console` or newline-delimited `json` logs |
 | `CIPHERLENS_API_MAX_BATCH_SIZE` | `8` | Maximum files in one API batch |
 | `CIPHERLENS_API_MAX_CONCURRENCY` | `1` | Concurrent inference jobs per API process |
+| `CIPHERLENS_API_URL` | `http://127.0.0.1:8000` | CipherLens API used by Streamlit |
+| `CIPHERLENS_API_TIMEOUT_SECONDS` | `15` | Frontend backend-call timeout |
+| `CIPHERLENS_LOCAL_FALLBACK` | `true` | Enable retryable-error local fallback |
 
 Copy `.env.example` to `.env` to override Compose defaults. Do not commit `.env`
 files or secrets. Configuration is validated at startup; invalid integers,
@@ -118,6 +121,9 @@ Runtime environment variables override `configs/default.yaml`.
   bounded before model execution.
 - Every API request receives a generated `X-Request-ID`; uploaded names and
   bytes are excluded from logs and metrics.
+- Streamlit validates uploads before transmission and falls back only for
+  network or HTTP 5xx failures. HTTP 4xx validation errors remain visible and do
+  not trigger local inference.
 - Training caches compressed image bytes in memory by default to avoid repeated
   disk reads.
 - `--num-workers` enables parallel data loading after workload-specific

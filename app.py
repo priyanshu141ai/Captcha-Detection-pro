@@ -5,6 +5,7 @@ import hashlib
 import html
 import json
 import logging
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -14,7 +15,9 @@ from cipherlens.config import ConfigurationError, load_project_settings
 from cipherlens.inference import (
     CaptchaRecognizer,
     CheckpointValidationError,
-    Prediction,
+    InferenceAPIClient,
+    InferenceAPIError,
+    ServedPrediction,
     UploadLimits,
     UploadValidationError,
     load_uploaded_image,
@@ -62,6 +65,32 @@ def load_recognizer(
 ) -> CaptchaRecognizer:
     del checkpoint_modified_ns, checkpoint_size
     return CaptchaRecognizer(checkpoint_path, torch_threads=torch_threads)
+
+
+@st.cache_resource(show_spinner=False)
+def load_api_client(base_url: str, timeout_seconds: float) -> InferenceAPIClient:
+    return InferenceAPIClient(base_url, timeout_seconds=timeout_seconds)
+
+
+def predict_locally(image: Image.Image) -> ServedPrediction:
+    checkpoint_stat = CHECKPOINT.stat()
+    recognizer = load_recognizer(
+        str(CHECKPOINT),
+        checkpoint_stat.st_mtime_ns,
+        checkpoint_stat.st_size,
+        SETTINGS.runtime.torch_threads,
+    )
+    started = time.perf_counter()
+    prediction = recognizer.predict(image)
+    return ServedPrediction(
+        text=prediction.text,
+        confidence=prediction.confidence,
+        per_character_confidence=prediction.per_character_confidence,
+        model_version=recognizer.model_version,
+        inference_time_ms=(time.perf_counter() - started) * 1000,
+        request_id=None,
+        source="local",
+    )
 
 
 def render_copy_button(text: str) -> None:
@@ -177,6 +206,15 @@ st.markdown(
       .confidence-warning {
         margin-top: 10px; color: #9a3412; font-size: 13px; font-weight: 650;
       }
+      .result-meta {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 12px 0 14px;
+      }
+      .result-meta div {
+        padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: #f8fafc;
+        text-align: center;
+      }
+      .result-meta span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+      .result-meta strong { display: block; color: var(--ink); font-size: 13px; overflow-wrap: anywhere; }
       .result-empty {
         min-height: 270px; display: grid; place-items: center; padding: 28px;
         border: 1px dashed #cbd5e1; border-radius: 14px; color: var(--muted); text-align: center;
@@ -190,6 +228,7 @@ st.markdown(
         .cipher-intro h1 { letter-spacing: -1.3px; }
         .cipher-intro p { font-size: 15px; }
         .st-key-result_panel { min-height: 0; }
+        .result-meta { grid-template-columns: 1fr; }
       }
     </style>
     """,
@@ -203,6 +242,8 @@ if "prediction" not in st.session_state:
     st.session_state.prediction = None
 if "file_hash" not in st.session_state:
     st.session_state.file_hash = None
+if "prediction_notice" not in st.session_state:
+    st.session_state.prediction_notice = None
 
 logo_uri = image_data_uri(LOGO) if LOGO.is_file() else ""
 st.markdown(
@@ -218,6 +259,9 @@ st.markdown(
 
 left, right = st.columns([1.05, 0.95], gap="large")
 uploaded_image: Image.Image | None = None
+uploaded_data: bytes | None = None
+uploaded_filename = ""
+uploaded_content_type = ""
 
 with left:
     st.markdown('<div class="panel-label">Image preview</div>', unsafe_allow_html=True)
@@ -233,32 +277,57 @@ with left:
         if current_hash != st.session_state.file_hash:
             st.session_state.file_hash = current_hash
             st.session_state.prediction = None
+            st.session_state.prediction_notice = None
         try:
             uploaded_image = load_uploaded_image(raw_bytes, UPLOAD_LIMITS)
+            uploaded_data = raw_bytes
+            uploaded_filename = uploaded.name
+            uploaded_content_type = uploaded.type or "application/octet-stream"
             st.image(uploaded_image, width="stretch")
         except UploadValidationError as error:
             st.error(str(error))
 
-    model_ready = CHECKPOINT.is_file()
-    if not model_ready:
-        st.warning("The trained model is not available yet. Run `python train.py` first.")
+    if SETTINGS.api.local_fallback_enabled and not CHECKPOINT.is_file():
+        st.caption("Local fallback is unavailable; the FastAPI service must be running.")
     recognize = st.button(
         "Recognize text",
         type="primary",
         width="stretch",
-        disabled=uploaded_image is None or not model_ready,
+        disabled=uploaded_image is None,
     )
-    if recognize and uploaded_image is not None:
+    if recognize and uploaded_image is not None and uploaded_data is not None:
+        st.session_state.prediction = None
+        st.session_state.prediction_notice = None
         try:
             with st.spinner("Analyzing image…"):
-                checkpoint_stat = CHECKPOINT.stat()
-                recognizer = load_recognizer(
-                    str(CHECKPOINT),
-                    checkpoint_stat.st_mtime_ns,
-                    checkpoint_stat.st_size,
-                    SETTINGS.runtime.torch_threads,
+                api_client = load_api_client(
+                    SETTINGS.api.base_url, SETTINGS.api.request_timeout_seconds
                 )
-                st.session_state.prediction = recognizer.predict(uploaded_image)
+                st.session_state.prediction = api_client.predict(
+                    uploaded_data,
+                    filename=uploaded_filename,
+                    content_type=uploaded_content_type,
+                )
+        except InferenceAPIError as error:
+            LOGGER.warning(
+                "Inference API request failed",
+                extra={"event": "api_request_failed", "request_id": error.request_id},
+            )
+            if SETTINGS.api.local_fallback_enabled and error.retryable:
+                try:
+                    st.session_state.prediction = predict_locally(uploaded_image)
+                    st.session_state.prediction_notice = (
+                        "FastAPI was unavailable, so the approved local model was used."
+                    )
+                except (CheckpointValidationError, OSError):
+                    LOGGER.error("Local fallback model is unavailable")
+                    st.error(
+                        "The inference API and local fallback model are unavailable. "
+                        "Contact the application operator."
+                    )
+            else:
+                reference = f" Reference: {error.request_id}." if error.request_id else ""
+                st.error(f"{error.message}{reference}")
         except CheckpointValidationError:
             st.session_state.prediction = None
             LOGGER.exception("Checkpoint validation failed")
@@ -270,7 +339,9 @@ with left:
 
 with right, st.container(key="result_panel", border=True):
     st.markdown('<div class="panel-label">Recognition result</div>', unsafe_allow_html=True)
-    prediction: Prediction | None = st.session_state.prediction
+    if st.session_state.prediction_notice:
+        st.info(st.session_state.prediction_notice)
+    prediction: ServedPrediction | None = st.session_state.prediction
     if prediction is None:
         st.markdown(
             '<div class="result-empty"><div><strong>Your result will appear here</strong>'
@@ -279,11 +350,17 @@ with right, st.container(key="result_panel", border=True):
         )
     else:
         safe_prediction = html.escape(prediction.text or "No text detected")
+        safe_model_version = html.escape(prediction.model_version)
+        source_label = "FastAPI" if prediction.source == "api" else "Local fallback"
         st.markdown(
             f'<div class="result-display"><div><div class="check">✓</div>'
             f'<div class="prediction">{safe_prediction}</div></div></div>'
             f'<div class="confidence-row"><div class="label">Confidence</div>'
-            f'<div class="confidence-value">{prediction.confidence:.1%}</div></div>',
+            f'<div class="confidence-value">{prediction.confidence:.1%}</div></div>'
+            '<div class="result-meta">'
+            f"<div><span>Model</span><strong>{safe_model_version}</strong></div>"
+            f"<div><span>Inference</span><strong>{prediction.inference_time_ms:.2f} ms</strong></div>"
+            f"<div><span>Served by</span><strong>{source_label}</strong></div></div>",
             unsafe_allow_html=True,
         )
         if prediction.confidence < CONFIDENCE_THRESHOLD:
@@ -296,9 +373,10 @@ with right, st.container(key="result_panel", border=True):
             st.session_state.uploader_version += 1
             st.session_state.prediction = None
             st.session_state.file_hash = None
+            st.session_state.prediction_notice = None
             st.rerun()
 
 st.markdown(
-    '<div class="privacy-note">Runs locally · Your image is not stored</div>',
+    '<div class="privacy-note">Sent only to your configured CipherLens service · Image bytes are not stored</div>',
     unsafe_allow_html=True,
 )

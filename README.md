@@ -71,6 +71,9 @@ override the YAML file:
 | `CIPHERLENS_LOG_FORMAT` | `console` | `console` or newline-delimited `json` |
 | `CIPHERLENS_API_MAX_BATCH_SIZE` | `8` | Maximum images per batch request |
 | `CIPHERLENS_API_MAX_CONCURRENCY` | `1` | Concurrent model inference jobs per process |
+| `CIPHERLENS_API_URL` | `http://127.0.0.1:8000` | Owned CipherLens backend URL used by Streamlit |
+| `CIPHERLENS_API_TIMEOUT_SECONDS` | `15` | Streamlit-to-API request timeout |
+| `CIPHERLENS_LOCAL_FALLBACK` | `true` | Use the approved local model after retryable API failures |
 
 Invalid values fail at startup with a field-specific message. Copy
 `.env.example` to `.env` for local Compose overrides; never commit `.env`.
@@ -182,6 +185,9 @@ streamlit run app.py
 ```
 
 Open `http://localhost:8501`, upload a PNG/JPG CAPTCHA, and select **Recognize text**.
+The UI validates the image locally, calls the configured CipherLens API, and
+shows model version, inference latency, and serving path. If the API is
+unavailable and fallback is enabled, the approved local checkpoint is used.
 
 ## Run the API
 

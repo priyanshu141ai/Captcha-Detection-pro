@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -31,6 +32,9 @@ class RuntimeSettings:
 class APISettings:
     max_batch_size: int = 8
     max_inference_concurrency: int = 1
+    base_url: str = "http://127.0.0.1:8000"
+    request_timeout_seconds: float = 15.0
+    local_fallback_enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -124,7 +128,13 @@ _RUNTIME_KEYS = {
     "log_level",
     "log_format",
 }
-_API_KEYS = {"max_batch_size", "max_inference_concurrency"}
+_API_KEYS = {
+    "max_batch_size",
+    "max_inference_concurrency",
+    "base_url",
+    "request_timeout_seconds",
+    "local_fallback_enabled",
+}
 _TRAINING_KEYS = {
     "labels_path",
     "images_path",
@@ -201,6 +211,9 @@ _ENVIRONMENT_KEYS = {
 _API_ENVIRONMENT_KEYS = {
     "max_batch_size": "CIPHERLENS_API_MAX_BATCH_SIZE",
     "max_inference_concurrency": "CIPHERLENS_API_MAX_CONCURRENCY",
+    "base_url": "CIPHERLENS_API_URL",
+    "request_timeout_seconds": "CIPHERLENS_API_TIMEOUT_SECONDS",
+    "local_fallback_enabled": "CIPHERLENS_LOCAL_FALLBACK",
 }
 _LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
@@ -307,6 +320,23 @@ def validate_torch_threads(value: object, name: str = "torch_threads") -> int:
     return _integer(value, name, minimum=1, maximum=256)
 
 
+def _api_url(value: object) -> str:
+    url = _non_empty_string(value, "api.base_url").rstrip("/")
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ConfigurationError(
+            "api.base_url must be an HTTP(S) URL without credentials, query, or fragment."
+        )
+    return url
+
+
 def _runtime_settings(
     values: Mapping[str, object],
     environment: Mapping[str, str],
@@ -383,6 +413,17 @@ def _api_settings(values: Mapping[str, object], environment: Mapping[str, str]) 
             "api.max_inference_concurrency",
             minimum=1,
             maximum=32,
+        ),
+        base_url=_api_url(configured("base_url", defaults.base_url)),
+        request_timeout_seconds=_floating(
+            configured("request_timeout_seconds", defaults.request_timeout_seconds),
+            "api.request_timeout_seconds",
+            minimum=0.1,
+            maximum=120.0,
+        ),
+        local_fallback_enabled=_boolean(
+            configured("local_fallback_enabled", defaults.local_fallback_enabled),
+            "api.local_fallback_enabled",
         ),
     )
 
