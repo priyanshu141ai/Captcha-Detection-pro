@@ -66,18 +66,24 @@ jobs:
         run: docker compose config --quiet
       - name: Build and start production stack
         run: docker compose up --build --detach --wait --wait-timeout 180
-      - name: Verify running services and container security
-        shell: bash
+      - name: Verify running service endpoints
         run: |
           curl --fail --silent --show-error http://127.0.0.1:8000/ready
           curl --fail --silent --show-error http://127.0.0.1:8000/model-info
           curl --fail --silent --show-error http://127.0.0.1:8501/_stcore/health
+      - name: Verify non-root identities
+        run: |
           test "$(docker compose exec -T api id -u)" = "10001"
           test "$(docker compose exec -T api id -g)" = "10001"
           test "$(docker compose exec -T cipherlens id -u)" = "10001"
           test "$(docker compose exec -T cipherlens id -g)" = "10001"
+      - name: Verify CPU-only minimal runtime
+        run: |
           docker compose exec -T api python -c "import importlib.metadata as m; import torch; assert torch.version.cuda is None; assert not any(str(d.metadata['Name']).lower().startswith('nvidia-') for d in m.distributions())"
           docker compose exec -T api sh -c 'test ! -e /app/data && test ! -e /app/tests && test "$(find /app/models -maxdepth 1 -type f | wc -l)" -eq 1'
+      - name: Verify read-only root and writable temporary storage
+        shell: bash
+        run: |
           if docker compose exec -T api sh -c "touch /app/write-probe"; then
             echo "Read-only root filesystem check failed."
             exit 1
